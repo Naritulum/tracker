@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mitgliederzahlen · Discord-Server</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<style>
+  :root {
+    --navy: #1c3a54;
+    --gold: #b8863a;
+    --bg: #fafaf8;
+    --card: #ffffff;
+    --line: #e6e4de;
+    --text: #1c1c1c;
+    --muted: #8a8a82;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Jost', sans-serif;
+    padding: 3.5rem 1.5rem 4rem;
+  }
+  header {
+    max-width: 1080px;
+    margin: 0 auto 2rem;
+  }
+  h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 2.4rem;
+    margin: 0 0 0.3rem;
+    color: var(--navy);
+  }
+  .sub {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .card {
+    max-width: 1080px;
+    margin: 0 auto;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1.75rem 1.75rem 1.25rem;
+  }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .card-head span {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  #reset-zoom {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.78rem;
+    color: var(--navy);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0.3rem 0.7rem;
+    cursor: pointer;
+  }
+  #reset-zoom:hover { border-color: var(--navy); }
+  #chart-wrap { position: relative; height: 440px; }
+  @media (max-width: 600px) {
+    #chart-wrap { height: 320px; }
+    h1 { font-size: 1.9rem; }
+  }
+  .stats {
+    display: flex;
+    gap: 2.5rem;
+    max-width: 1080px;
+    margin: 2rem auto 0;
+    flex-wrap: wrap;
+  }
+  .stat {
+    flex: 1;
+    min-width: 180px;
+    border-top: 2px solid var(--navy);
+    padding-top: 0.6rem;
+  }
+  .stat.gold { border-top-color: var(--gold); }
+  .stat .label { font-size: 0.82rem; color: var(--muted); }
+  .stat .value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2rem;
+    font-weight: 500;
+  }
+  .empty, .error {
+    text-align: center;
+    color: var(--muted);
+    padding: 3rem 1rem;
+    font-size: 0.95rem;
+  }
+  .error { color: #a13d3d; }
+  .hint {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 1.25rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mitgliederzahlen</h1>
+  <p class="sub">Tägliche Entwicklung der beobachteten Discord-Server</p>
+</header>
+
+<div class="card">
+  <div class="card-head">
+    <span>Scrollen zum Zoomen · Ziehen zum Verschieben</span>
+    <button id="reset-zoom" type="button">Zoom zurücksetzen</button>
+  </div>
+  <div id="chart-wrap">
+    <canvas id="chart"></canvas>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<p class="hint">Datenquelle: data/member-counts.json — wird täglich per GitHub Actions aktualisiert</p>
+
+<script>
+const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
+
+async function loadHistory() {
+  const res = await fetch('data/member-counts.json', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Datei nicht ladbar (${res.status})`);
+  return res.json();
+}
+
+function collectServers(history) {
+  const map = new Map();
+  for (const entry of history) {
+    for (const [code, s] of Object.entries(entry.servers || {})) {
+      if (!map.has(code)) map.set(code, s.label || s.name || code);
+    }
+  }
+  return map;
+}
+
+function buildDatasets(history) {
+  const servers = collectServers(history);
+  const labels = history.map(e =>
+    new Date(e.timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  );
+
+  const datasets = [...servers.entries()].map(([code, label], i) => ({
+    label,
+    data: history.map(e => e.servers?.[code]?.member_count ?? null),
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length],
+    spanGaps: true,
+    tension: 0.25,
+    pointRadius: 2,
+    pointHoverRadius: 4,
+    borderWidth: 2
+  }));
+
+  return { labels, datasets };
+}
+
+function renderStats(history) {
+  const el = document.getElementById('stats');
+  if (!history.length) { el.innerHTML = ''; return; }
+
+  const latest = history[history.length - 1];
+  let html = '';
+  let i = 0;
+  for (const [code, s] of Object.entries(latest.servers || {})) {
+    const cls = i % 2 === 1 ? 'gold' : '';
+    const value = (s.member_count ?? '–');
+    html += `<div class="stat ${cls}">
+      <div class="label">${s.label || code}</div>
+      <div class="value">${value}${typeof s.member_count === 'number' ? ' Mitglieder' : ''}</div>
+    </div>`;
+    i++;
+  }
+  el.innerHTML = html;
+}
+
+let chartInstance = null;
+
+function renderChart(history) {
+  const { labels, datasets } = buildDatasets(history);
+
+  chartInstance = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 350 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { font: { family: 'Jost', size: 12 }, boxWidth: 14, usePointStyle: true, pointStyle: 'line' }
+        },
+        tooltip: { titleFont: { family: 'Jost' }, bodyFont: { family: 'Jost' } },
+        zoom: {
+          zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          pan: { enabled: true, mode: 'x' },
+          limits: { x: { min: 'original', max: 'original' } }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#efefe9' }, ticks: { font: { family: 'Jost', size: 11 } } },
+        y: { grid: { color: '#efefe9' }, ticks: { font: { family: 'Jost', size: 11 } }, beginAtZero: false }
+      }
+    }
+  });
+}
+
+document.getElementById('reset-zoom').addEventListener('click', () => {
+  if (chartInstance) chartInstance.resetZoom();
+});
+
+loadHistory()
+  .then(history => {
+    if (!history.length) {
+      document.querySelector('.card').innerHTML =
+        '<p class="empty">Noch keine Daten vorhanden — die erste Erfassung erfolgt beim nächsten Workflow-Lauf.</p>';
+      return;
+    }
+    renderStats(history);
+    renderChart(history);
+  })
+  .catch(err => {
+    document.querySelector('.card').innerHTML =
+      `<p class="error">Daten konnten nicht geladen werden: ${err.message}<br>
+      Hinweis: Beim direkten Öffnen der Datei im Browser (file://) blockieren manche Browser das
+      Nachladen lokaler JSON-Dateien. Über GitHub Pages oder einen lokalen Webserver funktioniert es.</p>`;
+  });
+</script>
+
+</body>
+</html>
