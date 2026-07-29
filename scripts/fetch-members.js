@@ -6,8 +6,8 @@ import fs from 'node:fs/promises';
 
 // Hier die zu beobachtenden Server eintragen (Invite-Code + Klartext-Label).
 const SERVERS = [
-  { code: 'uuBEVU9anf', label: 'Server 1 (PhantasiaCraft)' },
-  { code: 'jfHRUSYzp8', label: 'Server 2 (McThemeParks)' }
+  { code: 'uuBEVU9anf', label: 'PhantasiaCraft' },
+  { code: 'jfHRUSYzp8', label: 'McThemeParks' }
 ];
 
 const DATA_FILE = new URL('../data/member-counts.json', import.meta.url);
