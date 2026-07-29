@@ -1,23 +1,26 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mitgliederzahlen · Discord-Server</title>
+<title>Member Growth · Discord Servers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
   :root {
     --navy: #1c3a54;
+    --navy-soft: #2c4f6d;
     --gold: #b8863a;
-    --bg: #fafaf8;
+    --bg: #faf9f6;
     --card: #ffffff;
-    --line: #e6e4de;
+    --line: #e8e6df;
     --text: #1c1c1c;
-    --muted: #8a8a82;
+    --muted: #8b8b82;
+    --green: #3f7d5c;
+    --red: #a13d3d;
   }
   * { box-sizing: border-box; }
   body {
@@ -25,140 +28,218 @@
     background: var(--bg);
     color: var(--text);
     font-family: 'Jost', sans-serif;
-    padding: 3.5rem 1.5rem 4rem;
+    padding: 3.5rem 1.5rem 4.5rem;
+    -webkit-font-smoothing: antialiased;
   }
-  header {
-    max-width: 1080px;
-    margin: 0 auto 2rem;
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  header { margin-bottom: 2.25rem; }
+  .eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 600;
+    margin-bottom: 0.4rem;
   }
   h1 {
     font-family: 'Cormorant Garamond', serif;
     font-style: italic;
     font-weight: 500;
-    font-size: 2.4rem;
-    margin: 0 0 0.3rem;
+    font-size: 2.5rem;
+    margin: 0;
     color: var(--navy);
   }
-  .sub {
-    margin: 0;
-    color: var(--muted);
-    font-size: 0.92rem;
+
+  /* Hero stat cards */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1.1rem;
+    margin-bottom: 2rem;
   }
-  .card {
-    max-width: 1080px;
-    margin: 0 auto;
+  .hero-card {
     background: var(--card);
     border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 1.75rem 1.75rem 1.25rem;
+    border-top: 3px solid var(--accent, var(--navy));
+    border-radius: 6px;
+    padding: 1.2rem 1.3rem 1.1rem;
+  }
+  .hero-name {
+    font-size: 0.86rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+  }
+  .hero-value {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 600;
+    font-size: 2.2rem;
+    color: var(--navy);
+    line-height: 1.1;
+  }
+  .hero-delta {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 0.35rem;
+  }
+  .hero-delta.up { color: var(--green); }
+  .hero-delta.down { color: var(--red); }
+
+  /* Chart card */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1.5rem 1.6rem 1.25rem;
   }
   .card-head {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-  .card-head span {
-    font-size: 0.8rem;
-    color: var(--muted);
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
   }
   #reset-zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     font-family: 'Jost', sans-serif;
-    font-size: 0.78rem;
-    color: var(--navy);
+    font-size: 0.76rem;
+    color: var(--muted);
     background: transparent;
     border: 1px solid var(--line);
-    border-radius: 3px;
-    padding: 0.3rem 0.7rem;
+    border-radius: 4px;
+    padding: 0.32rem 0.65rem;
     cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
   }
-  #reset-zoom:hover { border-color: var(--navy); }
-  #chart-wrap { position: relative; height: 440px; }
+  #reset-zoom:hover { color: var(--navy); border-color: var(--navy); }
+  #reset-zoom svg { width: 12px; height: 12px; }
+  #chart-wrap { position: relative; height: 420px; }
   @media (max-width: 600px) {
-    #chart-wrap { height: 320px; }
-    h1 { font-size: 1.9rem; }
+    #chart-wrap { height: 300px; }
+    h1 { font-size: 1.95rem; }
   }
-  .stats {
-    display: flex;
-    gap: 2.5rem;
-    max-width: 1080px;
-    margin: 2rem auto 0;
-    flex-wrap: wrap;
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2rem;
   }
-  .stat {
-    flex: 1;
-    min-width: 180px;
-    border-top: 2px solid var(--navy);
-    padding-top: 0.6rem;
-  }
-  .stat.gold { border-top-color: var(--gold); }
-  .stat .label { font-size: 0.82rem; color: var(--muted); }
-  .stat .value {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 2rem;
+  thead th {
+    text-align: left;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
     font-weight: 500;
+    padding: 0 0.5rem 0.6rem;
+    border-bottom: 1px solid var(--navy);
   }
+  thead th.num, tbody td.num { text-align: right; }
+  tbody td {
+    padding: 0.85rem 0.5rem;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.9rem;
+  }
+  tbody tr:hover { background: #f7f6f2; }
+  .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 0.55rem;
+    vertical-align: middle;
+  }
+  td.change.up { color: var(--green); }
+  td.change.down { color: var(--red); }
+  td.change.flat { color: var(--muted); }
+
   .empty, .error {
     text-align: center;
     color: var(--muted);
     padding: 3rem 1rem;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
   }
-  .error { color: #a13d3d; }
-  .hint {
-    text-align: center;
-    color: var(--muted);
-    font-size: 0.78rem;
-    margin-top: 1.25rem;
-  }
+  .error { color: var(--red); }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Mitgliederzahlen</h1>
-  <p class="sub">Tägliche Entwicklung der beobachteten Discord-Server</p>
-</header>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Discord</div>
+    <h1>Member Growth</h1>
+  </header>
 
-<div class="card">
-  <div class="card-head">
-    <span>Scrollen zum Zoomen · Ziehen zum Verschieben</span>
-    <button id="reset-zoom" type="button">Zoom zurücksetzen</button>
+  <div class="hero-grid" id="hero"></div>
+
+  <div class="card">
+    <div class="card-head">
+      <button id="reset-zoom" type="button" title="Scroll to zoom, drag to pan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
+        Reset zoom
+      </button>
+    </div>
+    <div id="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
   </div>
-  <div id="chart-wrap">
-    <canvas id="chart"></canvas>
-  </div>
+
+  <table id="table" style="display:none">
+    <thead>
+      <tr>
+        <th>Server</th>
+        <th class="num">Members</th>
+        <th class="num">7-day change</th>
+      </tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+  </table>
 </div>
-
-<div class="stats" id="stats"></div>
-
-<p class="hint">Datenquelle: data/member-counts.json — wird täglich per GitHub Actions aktualisiert</p>
 
 <script>
 const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
 
 async function loadHistory() {
   const res = await fetch('data/member-counts.json', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Datei nicht ladbar (${res.status})`);
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
   return res.json();
+}
+
+function niceName(code) {
+  return code.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function collectServers(history) {
   const map = new Map();
   for (const entry of history) {
     for (const [code, s] of Object.entries(entry.servers || {})) {
-      if (!map.has(code)) map.set(code, s.label || s.name || code);
+      if (!map.has(code)) map.set(code, s.label || s.name || niceName(code));
     }
   }
   return map;
 }
 
+function getDelta(history, code) {
+  if (history.length < 2) return null;
+  const latest = history[history.length - 1].servers?.[code]?.member_count;
+  const idx = Math.max(0, history.length - 1 - 7);
+  const compare = history[idx].servers?.[code]?.member_count;
+  if (typeof latest !== 'number' || typeof compare !== 'number') return null;
+  return latest - compare;
+}
+
+function deltaMarkup(delta) {
+  if (delta === null) return { text: '–', cls: 'flat' };
+  if (delta > 0) return { text: `▲ ${delta.toLocaleString('en-US')}`, cls: 'up' };
+  if (delta < 0) return { text: `▼ ${Math.abs(delta).toLocaleString('en-US')}`, cls: 'down' };
+  return { text: 'No change', cls: 'flat' };
+}
+
 function buildDatasets(history) {
   const servers = collectServers(history);
   const labels = history.map(e =>
-    new Date(e.timestamp).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    new Date(e.timestamp).toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })
   );
 
   const datasets = [...servers.entries()].map(([code, label], i) => ({
@@ -173,33 +254,49 @@ function buildDatasets(history) {
     borderWidth: 2
   }));
 
-  return { labels, datasets };
+  return { labels, datasets, servers };
 }
 
-function renderStats(history) {
-  const el = document.getElementById('stats');
-  if (!history.length) { el.innerHTML = ''; return; }
-
+function renderHero(history, servers) {
+  const el = document.getElementById('hero');
   const latest = history[history.length - 1];
   let html = '';
   let i = 0;
-  for (const [code, s] of Object.entries(latest.servers || {})) {
-    const cls = i % 2 === 1 ? 'gold' : '';
-    const value = (s.member_count ?? '–');
-    html += `<div class="stat ${cls}">
-      <div class="label">${s.label || code}</div>
-      <div class="value">${value}${typeof s.member_count === 'number' ? ' Mitglieder' : ''}</div>
+  for (const [code, label] of servers.entries()) {
+    const count = latest.servers?.[code]?.member_count;
+    const delta = deltaMarkup(getDelta(history, code));
+    html += `<div class="hero-card" style="--accent:${COLORS[i % COLORS.length]}">
+      <div class="hero-name">${label}</div>
+      <div class="hero-value">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</div>
+      <div class="hero-delta ${delta.cls}">${delta.text} · 7d</div>
     </div>`;
     i++;
   }
   el.innerHTML = html;
 }
 
+function renderTable(history, servers) {
+  const body = document.getElementById('table-body');
+  const latest = history[history.length - 1];
+  let html = '';
+  let i = 0;
+  for (const [code, label] of servers.entries()) {
+    const count = latest.servers?.[code]?.member_count;
+    const delta = deltaMarkup(getDelta(history, code));
+    html += `<tr>
+      <td><span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>${label}</td>
+      <td class="num">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</td>
+      <td class="num change ${delta.cls}">${delta.text}</td>
+    </tr>`;
+    i++;
+  }
+  body.innerHTML = html;
+  document.getElementById('table').style.display = '';
+}
+
 let chartInstance = null;
 
-function renderChart(history) {
-  const { labels, datasets } = buildDatasets(history);
-
+function renderChart(labels, datasets) {
   chartInstance = new Chart(document.getElementById('chart'), {
     type: 'line',
     data: { labels, datasets },
@@ -235,18 +332,20 @@ document.getElementById('reset-zoom').addEventListener('click', () => {
 loadHistory()
   .then(history => {
     if (!history.length) {
-      document.querySelector('.card').innerHTML =
-        '<p class="empty">Noch keine Daten vorhanden — die erste Erfassung erfolgt beim nächsten Workflow-Lauf.</p>';
+      document.querySelector('.wrap').innerHTML =
+        '<p class="empty">No data yet — the first snapshot lands after the next scheduled run.</p>';
       return;
     }
-    renderStats(history);
-    renderChart(history);
+    const { labels, datasets, servers } = buildDatasets(history);
+    renderHero(history, servers);
+    renderChart(labels, datasets);
+    renderTable(history, servers);
   })
   .catch(err => {
-    document.querySelector('.card').innerHTML =
-      `<p class="error">Daten konnten nicht geladen werden: ${err.message}<br>
-      Hinweis: Beim direkten Öffnen der Datei im Browser (file://) blockieren manche Browser das
-      Nachladen lokaler JSON-Dateien. Über GitHub Pages oder einen lokalen Webserver funktioniert es.</p>`;
+    document.querySelector('.wrap').innerHTML =
+      `<p class="error">Could not load data: ${err.message}<br>
+      If you opened this file directly (file://), your browser likely blocks local requests —
+      serve it via a local web server or GitHub Pages instead.</p>`;
   });
 </script>
 
