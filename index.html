@@ -3,16 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Member Growth · Discord Servers</title>
+<title>Server Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
   :root {
     --navy: #1c3a54;
-    --navy-soft: #2c4f6d;
     --gold: #b8863a;
     --bg: #faf9f6;
     --card: #ffffff;
@@ -28,131 +27,83 @@
     background: var(--bg);
     color: var(--text);
     font-family: 'Jost', sans-serif;
-    padding: 3.5rem 1.5rem 4.5rem;
+    padding: 2.25rem 1.5rem;
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 1080px; margin: 0 auto; }
+  .wrap { max-width: 980px; margin: 0 auto; }
 
-  header { margin-bottom: 2.25rem; }
-  .eyebrow {
-    font-size: 0.72rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--gold);
-    font-weight: 600;
-    margin-bottom: 0.4rem;
-  }
   h1 {
     font-family: 'Cormorant Garamond', serif;
     font-style: italic;
     font-weight: 500;
-    font-size: 2.5rem;
-    margin: 0;
+    font-size: 1.9rem;
+    margin: 0 0 1.1rem;
     color: var(--navy);
   }
 
-  /* Hero stat cards */
-  .hero-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 1.1rem;
-    margin-bottom: 2rem;
+  .stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.6rem 2.4rem;
+    margin-bottom: 1.4rem;
   }
-  .hero-card {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-top: 3px solid var(--accent, var(--navy));
-    border-radius: 6px;
-    padding: 1.2rem 1.3rem 1.1rem;
-  }
-  .hero-name {
-    font-size: 0.86rem;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 0.35rem;
-  }
-  .hero-value {
-    font-family: 'Cormorant Garamond', serif;
-    font-weight: 600;
-    font-size: 2.2rem;
-    color: var(--navy);
-    line-height: 1.1;
-  }
-  .hero-delta {
-    font-size: 0.78rem;
-    color: var(--muted);
-    margin-top: 0.35rem;
-  }
-  .hero-delta.up { color: var(--green); }
-  .hero-delta.down { color: var(--red); }
+  .stat-item { display: flex; align-items: baseline; gap: 0.5rem; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .stat-name { font-size: 0.92rem; font-weight: 500; }
+  .stat-value { font-size: 1.05rem; font-weight: 600; color: var(--navy); }
+  .stat-delta { font-size: 0.76rem; color: var(--muted); }
+  .stat-delta.up { color: var(--green); }
+  .stat-delta.down { color: var(--red); }
 
-  /* Chart card */
   .card {
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 6px;
-    padding: 1.5rem 1.6rem 1.25rem;
+    padding: 1.3rem 1.4rem 1.1rem;
   }
   .card-head {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 0.75rem;
   }
+  .toggle {
+    display: flex;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .mode-btn {
+    font-family: 'Jost', sans-serif;
+    font-size: 0.78rem;
+    padding: 0.32rem 0.8rem;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .mode-btn.active { background: var(--navy); color: #fff; }
+  .mode-btn:not(.active):hover { color: var(--navy); }
+
   #reset-zoom {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    font-family: 'Jost', sans-serif;
-    font-size: 0.76rem;
     color: var(--muted);
     background: transparent;
     border: 1px solid var(--line);
     border-radius: 4px;
-    padding: 0.32rem 0.65rem;
+    width: 28px; height: 28px;
+    justify-content: center;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
   }
   #reset-zoom:hover { color: var(--navy); border-color: var(--navy); }
-  #reset-zoom svg { width: 12px; height: 12px; }
-  #chart-wrap { position: relative; height: 420px; }
+  #reset-zoom svg { width: 13px; height: 13px; }
+
+  #chart-wrap { position: relative; height: 400px; }
   @media (max-width: 600px) {
     #chart-wrap { height: 300px; }
-    h1 { font-size: 1.95rem; }
+    .stats-row { gap: 1rem 1.6rem; }
   }
-
-  /* Table */
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 2rem;
-  }
-  thead th {
-    text-align: left;
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 500;
-    padding: 0 0.5rem 0.6rem;
-    border-bottom: 1px solid var(--navy);
-  }
-  thead th.num, tbody td.num { text-align: right; }
-  tbody td {
-    padding: 0.85rem 0.5rem;
-    border-bottom: 1px solid var(--line);
-    font-size: 0.9rem;
-  }
-  tbody tr:hover { background: #f7f6f2; }
-  .dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 0.55rem;
-    vertical-align: middle;
-  }
-  td.change.up { color: var(--green); }
-  td.change.down { color: var(--red); }
-  td.change.flat { color: var(--muted); }
 
   .empty, .error {
     text-align: center;
@@ -166,35 +117,24 @@
 <body>
 
 <div class="wrap">
-  <header>
-    <div class="eyebrow">Discord</div>
-    <h1>Member Growth</h1>
-  </header>
+  <h1>Server Tracker</h1>
 
-  <div class="hero-grid" id="hero"></div>
+  <div class="stats-row" id="stats"></div>
 
   <div class="card">
     <div class="card-head">
-      <button id="reset-zoom" type="button" title="Scroll to zoom, drag to pan">
+      <div class="toggle" id="mode-toggle">
+        <button type="button" class="mode-btn active" data-mode="total">Total</button>
+        <button type="button" class="mode-btn" data-mode="change">Change</button>
+      </div>
+      <button id="reset-zoom" type="button" title="Scroll to zoom, drag to pan · reset zoom">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
-        Reset zoom
       </button>
     </div>
     <div id="chart-wrap">
       <canvas id="chart"></canvas>
     </div>
   </div>
-
-  <table id="table" style="display:none">
-    <thead>
-      <tr>
-        <th>Server</th>
-        <th class="num">Members</th>
-        <th class="num">7-day change</th>
-      </tr>
-    </thead>
-    <tbody id="table-body"></tbody>
-  </table>
 </div>
 
 <script>
@@ -214,7 +154,7 @@ function collectServers(history) {
   const map = new Map();
   for (const entry of history) {
     for (const [code, s] of Object.entries(entry.servers || {})) {
-      if (!map.has(code)) map.set(code, s.label || s.name || niceName(code));
+      if (!map.has(code)) map.set(code, resolveName(code, s));
     }
   }
   return map;
@@ -230,21 +170,54 @@ function getDelta(history, code) {
 }
 
 function deltaMarkup(delta) {
-  if (delta === null) return { text: '–', cls: 'flat' };
-  if (delta > 0) return { text: `▲ ${delta.toLocaleString('en-US')}`, cls: 'up' };
-  if (delta < 0) return { text: `▼ ${Math.abs(delta).toLocaleString('en-US')}`, cls: 'down' };
-  return { text: 'No change', cls: 'flat' };
+  if (delta === null) return { text: '–', cls: '' };
+  if (delta > 0) return { text: `▲ ${delta.toLocaleString('en-US')} · 7d`, cls: 'up' };
+  if (delta < 0) return { text: `▼ ${Math.abs(delta).toLocaleString('en-US')} · 7d`, cls: 'down' };
+  return { text: 'No change · 7d', cls: '' };
 }
 
-function buildDatasets(history) {
-  const servers = collectServers(history);
+function renderStats(history, servers) {
+  const el = document.getElementById('stats');
+  const latest = history[history.length - 1];
+  let html = '';
+  let i = 0;
+  for (const [code, label] of servers.entries()) {
+    const count = latest.servers?.[code]?.member_count;
+    const delta = deltaMarkup(getDelta(history, code));
+    html += `<div class="stat-item">
+      <span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
+      <span class="stat-name">${label}</span>
+      <span class="stat-value">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</span>
+      <span class="stat-delta ${delta.cls}">${delta.text}</span>
+    </div>`;
+    i++;
+  }
+  el.innerHTML = html;
+}
+
+function buildSeries(history, servers) {
   const labels = history.map(e =>
     new Date(e.timestamp).toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })
   );
+  const totalData = {};
+  const changeData = {};
+  for (const [code] of servers.entries()) {
+    const counts = history.map(e => e.servers?.[code]?.member_count ?? null);
+    totalData[code] = counts;
+    changeData[code] = counts.map((v, i) => {
+      if (i === 0) return null;
+      const prev = counts[i - 1];
+      if (typeof v !== 'number' || typeof prev !== 'number') return null;
+      return v - prev;
+    });
+  }
+  return { labels, totalData, changeData };
+}
 
-  const datasets = [...servers.entries()].map(([code, label], i) => ({
+function makeDatasets(servers, dataMap) {
+  return [...servers.entries()].map(([code, label], i) => ({
     label,
-    data: history.map(e => e.servers?.[code]?.member_count ?? null),
+    data: dataMap[code],
     borderColor: COLORS[i % COLORS.length],
     backgroundColor: COLORS[i % COLORS.length],
     spanGaps: true,
@@ -253,45 +226,6 @@ function buildDatasets(history) {
     pointHoverRadius: 4,
     borderWidth: 2
   }));
-
-  return { labels, datasets, servers };
-}
-
-function renderHero(history, servers) {
-  const el = document.getElementById('hero');
-  const latest = history[history.length - 1];
-  let html = '';
-  let i = 0;
-  for (const [code, label] of servers.entries()) {
-    const count = latest.servers?.[code]?.member_count;
-    const delta = deltaMarkup(getDelta(history, code));
-    html += `<div class="hero-card" style="--accent:${COLORS[i % COLORS.length]}">
-      <div class="hero-name">${label}</div>
-      <div class="hero-value">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</div>
-      <div class="hero-delta ${delta.cls}">${delta.text} · 7d</div>
-    </div>`;
-    i++;
-  }
-  el.innerHTML = html;
-}
-
-function renderTable(history, servers) {
-  const body = document.getElementById('table-body');
-  const latest = history[history.length - 1];
-  let html = '';
-  let i = 0;
-  for (const [code, label] of servers.entries()) {
-    const count = latest.servers?.[code]?.member_count;
-    const delta = deltaMarkup(getDelta(history, code));
-    html += `<tr>
-      <td><span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>${label}</td>
-      <td class="num">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</td>
-      <td class="num change ${delta.cls}">${delta.text}</td>
-    </tr>`;
-    i++;
-  }
-  body.innerHTML = html;
-  document.getElementById('table').style.display = '';
 }
 
 let chartInstance = null;
@@ -303,7 +237,7 @@ function renderChart(labels, datasets) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: 350 },
+      animation: { duration: 300 },
       interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: {
@@ -336,16 +270,28 @@ loadHistory()
         '<p class="empty">No data yet — the first snapshot lands after the next scheduled run.</p>';
       return;
     }
-    const { labels, datasets, servers } = buildDatasets(history);
-    renderHero(history, servers);
-    renderChart(labels, datasets);
-    renderTable(history, servers);
+    const servers = collectServers(history);
+    const { labels, totalData, changeData } = buildSeries(history, servers);
+
+    renderStats(history, servers);
+    renderChart(labels, makeDatasets(servers, totalData));
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const mode = btn.dataset.mode;
+        chartInstance.data.datasets = makeDatasets(servers, mode === 'total' ? totalData : changeData);
+        chartInstance.resetZoom();
+        chartInstance.update();
+      });
+    });
   })
   .catch(err => {
     document.querySelector('.wrap').innerHTML =
       `<p class="error">Could not load data: ${err.message}<br>
-      If you opened this file directly (file://), your browser likely blocks local requests —
-      serve it via a local web server or GitHub Pages instead.</p>`;
+      If opened directly (file://), the browser likely blocks local requests —
+      serve via a local web server or GitHub Pages instead.</p>`;
   });
 </script>
 
