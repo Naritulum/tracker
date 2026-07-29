@@ -140,6 +140,12 @@
 <script>
 const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
 
+// Optional: override displayed names by server code (takes priority over
+// the "label" field in the JSON, and over the raw code as last resort).
+const NAME_OVERRIDES = {
+  // 'server_1': 'Actual Server Name',
+};
+
 async function loadHistory() {
   const res = await fetch('data/member-counts.json', { cache: 'no-store' });
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
@@ -150,11 +156,15 @@ function niceName(code) {
   return code.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+function resolveName(code, s) {
+  return NAME_OVERRIDES[code] || s.label || s.name || niceName(code);
+}
+
 function collectServers(history) {
   const map = new Map();
   for (const entry of history) {
     for (const [code, s] of Object.entries(entry.servers || {})) {
-      if (!map.has(code)) map.set(code, resolveName(code, s));
+      if (!map.has(code)) map.set(code, s.label || s.name || niceName(code));
     }
   }
   return map;
