@@ -3,14 +3,14 @@
     "timestamp": "2026-07-29T10:57:39.293Z",
     "servers": {
       "uuBEVU9anf": {
-        "label": "Server 1 (PhantasiaCraft)",
+        "label": "PhantasiaCraft",
         "id": "438451799855464491",
         "name": "PhantasiaCraft",
         "member_count": 1287,
         "online_count": 116
       },
       "jfHRUSYzp8": {
-        "label": "Server 2 (McThemeParks)",
+        "label": "McThemeParks",
         "id": "360491216955244544",
         "name": "McThemeParks",
         "member_count": 773,
