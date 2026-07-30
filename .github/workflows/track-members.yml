@@ -2,8 +2,7 @@ name: Discord Member Tracker
 
 on:
   schedule:
-    # Läuft täglich um 08:00 UTC (Sommerzeit DE: 10:00, Winterzeit DE: 09:00)
-    - cron: '0 8 * * *'
+  - cron: '*/15 * * * *'
   workflow_dispatch: {}   # erlaubt manuelles Auslösen über den "Run workflow"-Button
 
 permissions:
