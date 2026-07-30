@@ -1,0 +1,36 @@
+name: Discord Member Tracker
+
+on:
+  schedule:
+  - cron: '*/15 * * * *'
+  workflow_dispatch: {}   # erlaubt manuelles Auslösen über den "Run workflow"-Button
+
+permissions:
+  contents: write   # nötig, damit der Workflow data/member-counts.json zurück committen darf
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Mitgliederzahlen abrufen und speichern
+        run: node scripts/fetch-members.js
+
+      - name: Änderungen committen und pushen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/member-counts.json
+          if git diff --staged --quiet; then
+            echo "Keine Änderungen an den Daten."
+          else
+            git commit -m "Update: Mitgliederzahlen $(date -u +'%Y-%m-%d')"
+            git push
+          fi
