@@ -17,43 +17,5 @@
         "online_count": 118
       }
     }
-  },
-  {
-    "timestamp": "2026-07-30T07:49:43.930Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 61
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 772,
-        "online_count": 60
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T08:16:57.317Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 69
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 772,
-        "online_count": 63
-      }
-    }
   }
 ]
