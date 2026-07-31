@@ -47,13 +47,16 @@
     gap: 1.6rem 2.4rem;
     margin-bottom: 1.4rem;
   }
-  .stat-item { display: flex; align-items: baseline; gap: 0.5rem; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .stat-item { display: flex; align-items: flex-start; gap: 0.5rem; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 0.4rem; }
+  .stat-main { display: flex; flex-direction: column; gap: 0.15rem; }
+  .stat-line1 { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
   .stat-name { font-size: 0.92rem; font-weight: 500; }
   .stat-value { font-size: 1.05rem; font-weight: 600; color: var(--navy); }
   .stat-delta { font-size: 0.76rem; color: var(--muted); }
   .stat-delta.up { color: var(--green); }
   .stat-delta.down { color: var(--red); }
+  .stat-line2 { font-size: 0.72rem; color: var(--muted); }
 
   .card {
     background: var(--card);
@@ -126,6 +129,7 @@
       <div class="toggle" id="mode-toggle">
         <button type="button" class="mode-btn active" data-mode="total">Total</button>
         <button type="button" class="mode-btn" data-mode="change">Change</button>
+        <button type="button" class="mode-btn" data-mode="online">Online</button>
       </div>
       <button id="reset-zoom" type="button" title="Scroll to zoom, drag to pan · reset zoom">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
@@ -140,8 +144,17 @@
 <script>
 const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
 
-// Optional: override displayed names by server code (takes priority over
-// the "label" field in the JSON, and over the raw code as last resort).
+// Zieluhrzeit (UTC), der die tägliche Stichprobe für "Total"/"Change" am
+// nächsten liegen soll. Die Cron-Läufe passieren unregelmäßig (GitHub
+// garantiert bei "schedule" keine pünktliche Ausführung) - von allen an
+// einem Kalendertag (UTC) gesammelten Abfragen wird darum die verwendet,
+// die dieser Uhrzeit am nächsten kommt. Anpassen falls gewünscht: für
+// z. B. 14:00 deutscher Sommerzeit (UTC+2) hier 12 eintragen.
+const TARGET_HOUR_UTC = 12;
+const TARGET_MINUTE_UTC = 0;
+
+// Optional: Anzeigenamen manuell überschreiben (hat Vorrang vor dem von
+// Discord gelieferten Namen).
 const NAME_OVERRIDES = {
   // 'server_1': 'Actual Server Name',
 };
@@ -149,70 +162,155 @@ const NAME_OVERRIDES = {
 async function loadHistory() {
   const res = await fetch('data/member-counts.json', { cache: 'no-store' });
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
-  return res.json();
+  const raw = await res.json();
+
+  // Robust gegenüber dem alten Datenformat (reines Array), falls diese
+  // Seite geladen wird, bevor der erste Lauf mit dem neuen Skript
+  // durchgelaufen ist.
+  if (Array.isArray(raw)) {
+    const meta = {};
+    const history = raw.map(entry => {
+      const servers = {};
+      for (const [code, s] of Object.entries(entry.servers || {})) {
+        if (s.id || s.name || s.label) {
+          meta[code] = { id: s.id ?? null, name: s.name ?? s.label ?? null };
+        }
+        servers[code] = s.error
+          ? { error: s.error }
+          : { member_count: s.member_count ?? null, online_count: s.online_count ?? null };
+      }
+      return { timestamp: entry.timestamp, servers };
+    });
+    return { meta, history };
+  }
+
+  return { meta: raw.meta || {}, history: raw.history || [] };
 }
 
 function niceName(code) {
   return code.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function resolveName(code, s) {
-  return NAME_OVERRIDES[code] || s.label || s.name || niceName(code);
+function resolveName(code, meta) {
+  return NAME_OVERRIDES[code] || meta[code]?.name || niceName(code);
 }
 
-function collectServers(history) {
+function collectServers(meta, history) {
   const map = new Map();
+  for (const code of Object.keys(meta)) {
+    map.set(code, resolveName(code, meta));
+  }
   for (const entry of history) {
-    for (const [code, s] of Object.entries(entry.servers || {})) {
-      if (!map.has(code)) map.set(code, s.label || s.name || niceName(code));
+    for (const code of Object.keys(entry.servers || {})) {
+      if (!map.has(code)) map.set(code, resolveName(code, meta));
     }
   }
   return map;
 }
 
-function getDelta(history, code) {
-  if (history.length < 2) return null;
-  const latest = history[history.length - 1].servers?.[code]?.member_count;
-  const idx = Math.max(0, history.length - 1 - 7);
-  const compare = history[idx].servers?.[code]?.member_count;
+// Wählt pro Kalendertag (UTC) genau eine Abfrage aus: die, deren Uhrzeit
+// TARGET_HOUR_UTC:TARGET_MINUTE_UTC am nächsten liegt. So ergibt sich aus
+// den unregelmäßigen Cron-Läufen trotzdem eine konsistente
+// "einmal täglich zur selben Zeit"-Reihe für Total/Change.
+// Hinweis: Es wird EIN Eintrag pro Tag für beide Server gemeinsam gewählt
+// (nicht pro Server einzeln optimiert) - schlägt eine Abfrage für einen
+// Server an genau diesem Zeitpunkt fehl, entsteht für diesen Tag eine
+// Lücke, auch wenn an einem anderen Zeitpunkt desselben Tages Daten für
+// diesen Server vorlägen.
+function pickDailySamples(history) {
+  const byDay = new Map();
+  for (const entry of history) {
+    const date = new Date(entry.timestamp);
+    const dayKey = date.toISOString().slice(0, 10);
+    const minutesOfDay = date.getUTCHours() * 60 + date.getUTCMinutes();
+    const targetMinutes = TARGET_HOUR_UTC * 60 + TARGET_MINUTE_UTC;
+    const rawDiff = Math.abs(minutesOfDay - targetMinutes);
+    const diff = Math.min(rawDiff, 1440 - rawDiff);
+
+    const current = byDay.get(dayKey);
+    if (!current || diff < current.diff) {
+      byDay.set(dayKey, { entry, diff });
+    }
+  }
+  return [...byDay.values()]
+    .map(v => v.entry)
+    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+}
+
+// Vergleich auf Basis der täglichen Stichprobe (nicht der rohen,
+// unregelmäßigen Abfragen) - sonst vergleicht man je nach Abfragefrequenz
+// nur die letzten paar Stunden statt 7 Tage. "days" gibt die tatsächlich
+// verfügbare Spanne zurück, falls noch keine 7 Tage an Daten vorliegen.
+function getDelta(dailyHistory, code) {
+  if (dailyHistory.length < 2) return null;
+  const lastIdx = dailyHistory.length - 1;
+  const compareIdx = Math.max(0, lastIdx - 7);
+  if (compareIdx === lastIdx) return null;
+  const latest = dailyHistory[lastIdx].servers?.[code]?.member_count;
+  const compare = dailyHistory[compareIdx].servers?.[code]?.member_count;
   if (typeof latest !== 'number' || typeof compare !== 'number') return null;
-  return latest - compare;
+  return { delta: latest - compare, days: lastIdx - compareIdx };
 }
 
-function deltaMarkup(delta) {
-  if (delta === null) return { text: '–', cls: '' };
-  if (delta > 0) return { text: `▲ ${delta.toLocaleString('en-US')} · 7d`, cls: 'up' };
-  if (delta < 0) return { text: `▼ ${Math.abs(delta).toLocaleString('en-US')} · 7d`, cls: 'down' };
-  return { text: 'No change · 7d', cls: '' };
+function deltaMarkup(result) {
+  if (!result) return { text: '–', cls: '' };
+  const { delta, days } = result;
+  const suffix = `${days}d`;
+  if (delta > 0) return { text: `▲ ${delta.toLocaleString('en-US')} · ${suffix}`, cls: 'up' };
+  if (delta < 0) return { text: `▼ ${Math.abs(delta).toLocaleString('en-US')} · ${suffix}`, cls: 'down' };
+  return { text: `No change · ${suffix}`, cls: '' };
 }
 
-function renderStats(history, servers) {
+// Durchschnitt/Min/Max der Online-Zahl über die letzten 7 Tage, basierend
+// auf ALLEN rohen Abfragen (nicht nur der täglichen Stichprobe) - dadurch
+// ist der Durchschnitt aussagekräftiger als mit nur 7 Einzelwerten.
+function onlineStats7d(history, code) {
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const values = history
+    .filter(e => new Date(e.timestamp).getTime() >= cutoff)
+    .map(e => e.servers?.[code]?.online_count)
+    .filter(v => typeof v === 'number');
+  if (!values.length) return null;
+  const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  return { avg, min: Math.min(...values), max: Math.max(...values) };
+}
+
+function renderStats(dailyHistory, history, servers) {
   const el = document.getElementById('stats');
-  const latest = history[history.length - 1];
+  const latestDaily = dailyHistory[dailyHistory.length - 1];
   let html = '';
   let i = 0;
   for (const [code, label] of servers.entries()) {
-    const count = latest.servers?.[code]?.member_count;
-    const delta = deltaMarkup(getDelta(history, code));
+    const count = latestDaily?.servers?.[code]?.member_count;
+    const delta = deltaMarkup(getDelta(dailyHistory, code));
+    const online = onlineStats7d(history, code);
+    const onlineLine = online
+      ? `Online ø ${online.avg.toLocaleString('en-US')} · ${online.min.toLocaleString('en-US')}–${online.max.toLocaleString('en-US')} (7d)`
+      : '';
     html += `<div class="stat-item">
       <span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
-      <span class="stat-name">${label}</span>
-      <span class="stat-value">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</span>
-      <span class="stat-delta ${delta.cls}">${delta.text}</span>
+      <div class="stat-main">
+        <div class="stat-line1">
+          <span class="stat-name">${label}</span>
+          <span class="stat-value">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</span>
+          <span class="stat-delta ${delta.cls}">${delta.text}</span>
+        </div>
+        ${onlineLine ? `<div class="stat-line2">${onlineLine}</div>` : ''}
+      </div>
     </div>`;
     i++;
   }
   el.innerHTML = html;
 }
 
-function buildSeries(history, servers) {
-  const labels = history.map(e =>
+function buildDailySeries(dailyHistory, servers) {
+  const labels = dailyHistory.map(e =>
     new Date(e.timestamp).toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' })
   );
   const totalData = {};
   const changeData = {};
   for (const [code] of servers.entries()) {
-    const counts = history.map(e => e.servers?.[code]?.member_count ?? null);
+    const counts = dailyHistory.map(e => e.servers?.[code]?.member_count ?? null);
     totalData[code] = counts;
     changeData[code] = counts.map((v, i) => {
       if (i === 0) return null;
@@ -222,6 +320,21 @@ function buildSeries(history, servers) {
     });
   }
   return { labels, totalData, changeData };
+}
+
+// Ungefilterte Reihe (alle Abfragepunkte) für den Online-Modus - hier soll
+// bewusst auch die Entwicklung innerhalb eines Tages sichtbar sein.
+function buildOnlineSeries(history, servers) {
+  const labels = history.map(e =>
+    new Date(e.timestamp).toLocaleString('en-US', {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+    })
+  );
+  const onlineData = {};
+  for (const [code] of servers.entries()) {
+    onlineData[code] = history.map(e => e.servers?.[code]?.online_count ?? null);
+  }
+  return { labels, onlineData };
 }
 
 function makeDatasets(servers, dataMap) {
@@ -274,24 +387,35 @@ document.getElementById('reset-zoom').addEventListener('click', () => {
 });
 
 loadHistory()
-  .then(history => {
+  .then(({ meta, history }) => {
     if (!history.length) {
       document.querySelector('.wrap').innerHTML =
         '<p class="empty">No data yet — the first snapshot lands after the next scheduled run.</p>';
       return;
     }
-    const servers = collectServers(history);
-    const { labels, totalData, changeData } = buildSeries(history, servers);
 
-    renderStats(history, servers);
-    renderChart(labels, makeDatasets(servers, totalData));
+    const servers = collectServers(meta, history);
+    const dailyHistory = pickDailySamples(history);
+
+    const daily = buildDailySeries(dailyHistory, servers);
+    const online = buildOnlineSeries(history, servers);
+
+    renderStats(dailyHistory, history, servers);
+    renderChart(daily.labels, makeDatasets(servers, daily.totalData));
 
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const mode = btn.dataset.mode;
-        chartInstance.data.datasets = makeDatasets(servers, mode === 'total' ? totalData : changeData);
+
+        if (mode === 'online') {
+          chartInstance.data.labels = online.labels;
+          chartInstance.data.datasets = makeDatasets(servers, online.onlineData);
+        } else {
+          chartInstance.data.labels = daily.labels;
+          chartInstance.data.datasets = makeDatasets(servers, mode === 'total' ? daily.totalData : daily.changeData);
+        }
         chartInstance.resetZoom();
         chartInstance.update();
       });
