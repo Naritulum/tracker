@@ -226,5 +226,24 @@
         "online_count": 50
       }
     }
+  },
+  {
+    "timestamp": "2026-07-31T06:38:09.959Z",
+    "servers": {
+      "uuBEVU9anf": {
+        "label": "PhantasiaCraft",
+        "id": "438451799855464491",
+        "name": "PhantasiaCraft",
+        "member_count": 1287,
+        "online_count": 49
+      },
+      "jfHRUSYzp8": {
+        "label": "McThemeParks",
+        "id": "360491216955244544",
+        "name": "McThemeParks",
+        "member_count": 769,
+        "online_count": 59
+      }
+    }
   }
 ]
