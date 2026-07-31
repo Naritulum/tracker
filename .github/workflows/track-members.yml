@@ -31,6 +31,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "Keine Änderungen an den Daten."
           else
-            git commit -m "Update: Mitgliederzahlen $(date -u +'%Y-%m-%d')"
+            git commit -m "Updating member count"
             git push
           fi
