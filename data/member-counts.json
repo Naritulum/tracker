@@ -1,268 +1,209 @@
-[
-  {
-    "timestamp": "2026-07-29T10:57:39.293Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 116
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 773,
-        "online_count": 118
-      }
+{
+  "meta": {
+    "uuBEVU9anf": {
+      "id": "438451799855464491",
+      "name": "PhantasiaCraft"
+    },
+    "jfHRUSYzp8": {
+      "id": "360491216955244544",
+      "name": "McThemeParks"
     }
   },
-  {
-    "timestamp": "2026-07-30T10:34:00.559Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 115
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 772,
-        "online_count": 106
+  "history": [
+    {
+      "timestamp": "2026-07-29T10:57:39.293Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 116
+        },
+        "jfHRUSYzp8": {
+          "member_count": 773,
+          "online_count": 118
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T10:34:00.559Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 115
+        },
+        "jfHRUSYzp8": {
+          "member_count": 772,
+          "online_count": 106
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T12:15:01.064Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 125
+        },
+        "jfHRUSYzp8": {
+          "member_count": 772,
+          "online_count": 127
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T14:34:04.327Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 162
+        },
+        "jfHRUSYzp8": {
+          "member_count": 772,
+          "online_count": 152
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T16:14:12.819Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 173
+        },
+        "jfHRUSYzp8": {
+          "member_count": 772,
+          "online_count": 162
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T17:49:42.167Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 197
+        },
+        "jfHRUSYzp8": {
+          "member_count": 771,
+          "online_count": 184
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T19:13:32.110Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 215
+        },
+        "jfHRUSYzp8": {
+          "member_count": 770,
+          "online_count": 202
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T20:34:48.839Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 203
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 178
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T21:48:20.445Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 157
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 139
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-30T22:57:48.087Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 107
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 101
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-31T00:01:21.544Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 83
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 79
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-31T03:47:37.625Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 36
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 50
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-31T06:38:09.959Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 49
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 59
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-31T09:31:26.974Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 106
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 87
+        }
+      }
+    },
+    {
+      "timestamp": "2026-07-31T11:46:58.868Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1287,
+          "online_count": 141
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 109
+        }
       }
     }
-  },
-  {
-    "timestamp": "2026-07-30T12:15:01.064Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 125
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 772,
-        "online_count": 127
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T14:34:04.327Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 162
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 772,
-        "online_count": 152
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T16:14:12.819Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 173
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 772,
-        "online_count": 162
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T17:49:42.167Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 197
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 771,
-        "online_count": 184
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T19:13:32.110Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 215
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 770,
-        "online_count": 202
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T20:34:48.839Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 203
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 178
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T21:48:20.445Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 157
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 139
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-30T22:57:48.087Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 107
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 101
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-31T00:01:21.544Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 83
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 79
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-31T03:47:37.625Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 36
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 50
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-31T06:38:09.959Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 49
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 59
-      }
-    }
-  },
-  {
-    "timestamp": "2026-07-31T09:31:26.974Z",
-    "servers": {
-      "uuBEVU9anf": {
-        "label": "PhantasiaCraft",
-        "id": "438451799855464491",
-        "name": "PhantasiaCraft",
-        "member_count": 1287,
-        "online_count": 106
-      },
-      "jfHRUSYzp8": {
-        "label": "McThemeParks",
-        "id": "360491216955244544",
-        "name": "McThemeParks",
-        "member_count": 769,
-        "online_count": 87
-      }
-    }
-  }
-]
+  ]
+}
