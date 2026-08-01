@@ -67,13 +67,17 @@ async function fetchInvite(code) {
 // Liest nur den zuletzt bekannten absoluten Stand jeder Spalte ein (nicht
 // die komplette Historie) - das reicht, um das nächste Delta zu berechnen,
 // und bleibt dadurch auch bei sehr vielen Zeilen schnell und speicherarm.
+// "needsLeadingNewline" ist true, wenn die Datei nicht mit einem
+// Zeilenumbruch endet (z.B. weil GitHub oder ein Editor ihn beim letzten
+// Speichern entfernt hat) - dann muss vor dem Anhängen erst einer ergänzt
+// werden, sonst würde die neue Zeile an die letzte bestehende ankleben.
 async function readLastState() {
   const state = { t: null, servers: SERVERS.map(() => ({ m: null, o: null })) };
   let raw;
   try {
     raw = await fs.readFile(DATA_FILE, 'utf-8');
   } catch {
-    return state;
+    return { ...state, needsLeadingNewline: false };
   }
 
   for (const line of raw.split('\n')) {
@@ -100,7 +104,7 @@ async function readLastState() {
     }
   }
 
-  return state;
+  return { ...state, needsLeadingNewline: raw.length > 0 && !raw.endsWith('\n') };
 }
 
 // Kodiert einen neuen Wert relativ zum letzten bekannten Wert derselben
@@ -134,7 +138,8 @@ async function main() {
     fields.push(encodeField(onlineCount, state.servers[i].o));
   }
 
-  await fs.appendFile(DATA_FILE, fields.join(',') + '\n');
+  const newLine = fields.join(',') + '\n';
+  await fs.appendFile(DATA_FILE, (state.needsLeadingNewline ? '\n' : '') + newLine);
 }
 
 main();
