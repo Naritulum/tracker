@@ -1,17 +1,45 @@
-// Fragt die Discord-Invite-API für eine Liste von Servern ab und hängt
-// das Ergebnis an data/member-counts.json an. Läuft mit Node >= 18
-// (nutzt das eingebaute fetch, keine externen Abhängigkeiten nötig).
+// Fragt die Discord-Invite-API für eine Liste von Servern ab und hängt eine
+// neue Zeile an data/member-counts.csv an. Läuft mit Node >= 18 (nutzt das
+// eingebaute fetch, keine externen Abhängigkeiten nötig).
 
 import fs from 'node:fs/promises';
 
 const SERVERS = [
-  { code: 'uuBEVU9anf', fallbackName: 'PhantasiaCraft' },
-  { code: 'jfHRUSYzp8', fallbackName: 'McThemeParks' }
+  { code: 'uuBEVU9anf', name: 'PhantasiaCraft' },
+  { code: 'jfHRUSYzp8', name: 'McThemeParks' }
 ];
 
-const DATA_FILE = new URL('../data/member-counts.json', import.meta.url);
+const DATA_FILE = new URL('../data/member-counts.csv', import.meta.url);
 
-async function fetchInvite(code, fallbackName) {
+// --- Kompaktes Zahlenformat (identisch zu index.html) ---
+const B64_DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+
+function zigzagEncode(n) {
+  return n >= 0 ? n * 2 : -n * 2 - 1;
+}
+
+function zigzagDecode(z) {
+  return z % 2 === 0 ? z / 2 : -(z + 1) / 2;
+}
+
+function encodeNumber(n) {
+  let z = zigzagEncode(n);
+  if (z === 0) return B64_DIGITS[0];
+  let s = '';
+  while (z > 0) {
+    s = B64_DIGITS[z % 64] + s;
+    z = Math.floor(z / 64);
+  }
+  return s;
+}
+
+function decodeNumber(str) {
+  let z = 0;
+  for (const ch of str) z = z * 64 + B64_DIGITS.indexOf(ch);
+  return zigzagDecode(z);
+}
+
+async function fetchInvite(code) {
   const url = `https://discord.com/api/v9/invites/${code}`;
   const res = await fetch(url, {
     headers: {
@@ -31,74 +59,82 @@ async function fetchInvite(code, fallbackName) {
   // "profile" (neueres Server-Profil-Feature) oder als "approximate_*"
   // Feld auf oberster Ebene. Beides wird abgedeckt.
   return {
-    id: data.guild?.id ?? null,
-    name: data.guild?.name ?? data.profile?.name ?? fallbackName,
     member_count: data.profile?.member_count ?? data.approximate_member_count ?? null,
     online_count: data.profile?.online_count ?? data.approximate_presence_count ?? null
   };
 }
 
-async function loadData() {
+// Liest nur den zuletzt bekannten absoluten Stand jeder Spalte ein (nicht
+// die komplette Historie) - das reicht, um das nächste Delta zu berechnen,
+// und bleibt dadurch auch bei sehr vielen Zeilen schnell und speicherarm.
+async function readLastState() {
+  const state = { t: null, servers: SERVERS.map(() => ({ m: null, o: null })) };
   let raw;
   try {
     raw = await fs.readFile(DATA_FILE, 'utf-8');
   } catch {
-    return { meta: {}, history: [] };
+    return state;
   }
 
-  const parsed = JSON.parse(raw);
+  for (const line of raw.split('\n')) {
+    if (!line) continue;
+    const fields = line.split(',');
 
-  // Migration vom alten Format (reines Array, id/name/label bei jedem
-  // einzelnen Eintrag). Läuft automatisch beim nächsten Schreibvorgang,
-  // vorhandener Verlauf bleibt erhalten.
-  if (Array.isArray(parsed)) {
-    const meta = {};
-    const history = parsed.map(entry => {
-      const servers = {};
-      for (const [code, s] of Object.entries(entry.servers || {})) {
-        if (s.id || s.name || s.label) {
-          meta[code] = {
-            id: s.id ?? meta[code]?.id ?? null,
-            name: s.name ?? s.label ?? meta[code]?.name ?? null
-          };
-        }
-        servers[code] = s.error
-          ? { error: s.error }
-          : { member_count: s.member_count ?? null, online_count: s.online_count ?? null };
+    if (fields[0] !== '') {
+      const d = decodeNumber(fields[0]);
+      state.t = state.t === null ? d : state.t + d;
+    }
+
+    for (let i = 0; i < SERVERS.length; i++) {
+      const mField = fields[1 + i * 2];
+      const oField = fields[2 + i * 2];
+
+      if (mField) {
+        const d = decodeNumber(mField);
+        state.servers[i].m = state.servers[i].m === null ? d : state.servers[i].m + d;
       }
-      return { timestamp: entry.timestamp, servers };
-    });
-    return { meta, history };
-  }
-
-  return { meta: parsed.meta || {}, history: parsed.history || [] };
-}
-
-async function main() {
-  const data = await loadData();
-
-  const entry = {
-    timestamp: new Date().toISOString(),
-    servers: {}
-  };
-
-  for (const server of SERVERS) {
-    try {
-      const result = await fetchInvite(server.code, server.fallbackName);
-      data.meta[server.code] = { id: result.id, name: result.name };
-      entry.servers[server.code] = {
-        member_count: result.member_count,
-        online_count: result.online_count
-      };
-      console.log(`${server.code}: ${result.member_count ?? 'unbekannt'} Mitglieder`);
-    } catch (err) {
-      console.error(`Fehler bei ${server.code}: ${err.message}`);
-      entry.servers[server.code] = { error: err.message };
+      if (oField) {
+        const d = decodeNumber(oField);
+        state.servers[i].o = state.servers[i].o === null ? d : state.servers[i].o + d;
+      }
     }
   }
 
-  data.history.push(entry);
-  await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2) + '\n');
+  return state;
+}
+
+// Kodiert einen neuen Wert relativ zum letzten bekannten Wert derselben
+// Spalte. Gibt es noch keinen Vorwert (allererster Eintrag oder alle
+// bisherigen Läufe fehlgeschlagen), wird der absolute Wert gespeichert -
+// das ist mit derselben Kodierung möglich, ganz ohne Sonderfall beim Lesen.
+function encodeField(newValue, lastValue) {
+  if (newValue === null || newValue === undefined) return '';
+  return encodeNumber(lastValue === null ? newValue : newValue - lastValue);
+}
+
+async function main() {
+  const state = await readLastState();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  const fields = [encodeField(nowSeconds, state.t)];
+
+  for (let i = 0; i < SERVERS.length; i++) {
+    const server = SERVERS[i];
+    let memberCount = null;
+    let onlineCount = null;
+    try {
+      const result = await fetchInvite(server.code);
+      memberCount = result.member_count;
+      onlineCount = result.online_count;
+      console.log(`${server.code}: ${memberCount ?? 'unbekannt'} Mitglieder`);
+    } catch (err) {
+      console.error(`Fehler bei ${server.code}: ${err.message}`);
+    }
+    fields.push(encodeField(memberCount, state.servers[i].m));
+    fields.push(encodeField(onlineCount, state.servers[i].o));
+  }
+
+  await fs.appendFile(DATA_FILE, fields.join(',') + '\n');
 }
 
 main();
