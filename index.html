@@ -420,9 +420,9 @@ function renderChart(datasets, timeConfig) {
               if (point?.actualTimestamp) {
                 const day = luxon.DateTime.fromMillis(items[0].parsed.x).setZone(TARGET_TIMEZONE).toFormat('MMM d, yyyy');
                 const time = berlinDate(point.actualTimestamp).toFormat('HH:mm');
-                return `${day}, ${time}`;
+                return `${day} ${time}`;
               }
-              return luxon.DateTime.fromMillis(items[0].parsed.x).setZone(TARGET_TIMEZONE).toFormat('MMM d, yyyy, HH:mm');
+              return luxon.DateTime.fromMillis(items[0].parsed.x).setZone(TARGET_TIMEZONE).toFormat('MMM d, yyyy HH:mm');
             }
           }
         },
