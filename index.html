@@ -164,64 +164,91 @@ const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
 // Sommer- und Winterzeit.
 const TARGET_TIMEZONE = 'Europe/Berlin';
 
-// Optional: Anzeigenamen manuell überschreiben (hat Vorrang vor dem von
-// Discord gelieferten Namen).
-const NAME_OVERRIDES = {
-  // 'server_1': 'Actual Server Name',
-};
+// id und Name eines Servers bleiben über den Einladungslink hinweg konstant
+// (siehe fetch-members.js) - deshalb hier fest hinterlegt statt aus den
+// Daten gelesen.
+//
+// WICHTIG: Die Reihenfolge dieser Liste ist Teil des Datenformats (jede
+// Spalte in der CSV-Datei ist eine Position, kein Schlüssel) und MUSS mit
+// der SERVERS-Reihenfolge in fetch-members.js übereinstimmen. Bestehende
+// Einträge nie umsortieren oder löschen - neue Server nur ans Ende anhängen.
+const SERVERS = [
+  { code: 'uuBEVU9anf', name: 'PhantasiaCraft' },
+  { code: 'jfHRUSYzp8', name: 'McThemeParks' }
+];
+
+// --- Kompaktes Zahlenformat: Basis-64-Ziffern statt Basis-10, dadurch
+// deutlich weniger Zeichen pro Zahl. "0" steht für den Wert 0, danach
+// 1-9, A-Z, a-z, -, _ für höhere Werte (identisch zu fetch-members.js). ---
+const B64_DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_';
+
+// Zigzag-Dekodierung: kehrt die Abbildung 0→0, -1→1, 1→2, -2→3, 2→4, ...
+// um, damit auch negative Deltas ohne eigenes Vorzeichen-Zeichen auskommen.
+function zigzagDecode(z) {
+  return z % 2 === 0 ? z / 2 : -(z + 1) / 2;
+}
+
+function decodeNumber(str) {
+  let z = 0;
+  for (const ch of str) z = z * 64 + B64_DIGITS.indexOf(ch);
+  return zigzagDecode(z);
+}
+
+// Liest data/member-counts.csv: jede Zeile enthält t,m0,o0,m1,o1,... - jeder
+// Wert ist ein Delta zum letzten bekannten Wert SEINER Spalte (nicht zur
+// Vorzeile!). Ein leeres Feld bedeutet "bei diesem Lauf kein Wert" (z.B.
+// API-Fehler) und lässt den letzten bekannten Stand dieser Spalte
+// unverändert, bis wieder ein Wert vorliegt.
+function parseCsv(raw) {
+  const t0State = { t: null, servers: SERVERS.map(() => ({ m: null, o: null })) };
+  const history = [];
+
+  for (const line of raw.split('\n')) {
+    if (!line || line.startsWith('#')) continue;
+    const fields = line.split(',');
+
+    if (fields[0] !== '') {
+      const d = decodeNumber(fields[0]);
+      t0State.t = t0State.t === null ? d : t0State.t + d;
+    }
+
+    const servers = {};
+    for (let i = 0; i < SERVERS.length; i++) {
+      const mField = fields[1 + i * 2];
+      const oField = fields[2 + i * 2];
+      const s = t0State.servers[i];
+
+      if (mField) {
+        const d = decodeNumber(mField);
+        s.m = s.m === null ? d : s.m + d;
+      }
+      if (oField) {
+        const d = decodeNumber(oField);
+        s.o = s.o === null ? d : s.o + d;
+      }
+      servers[SERVERS[i].code] = { member_count: s.m, online_count: s.o };
+    }
+
+    history.push({ timestamp: t0State.t * 1000, servers });
+  }
+
+  return history;
+}
 
 async function loadHistory() {
-  const res = await fetch('data/member-counts.json', { cache: 'no-store' });
+  const res = await fetch('data/member-counts.csv', { cache: 'no-store' });
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
-  const raw = await res.json();
-
-  // Robust gegenüber dem alten Datenformat (reines Array), falls diese
-  // Seite geladen wird, bevor der erste Lauf mit dem neuen Skript
-  // durchgelaufen ist.
-  if (Array.isArray(raw)) {
-    const meta = {};
-    const history = raw.map(entry => {
-      const servers = {};
-      for (const [code, s] of Object.entries(entry.servers || {})) {
-        if (s.id || s.name || s.label) {
-          meta[code] = { id: s.id ?? null, name: s.name ?? s.label ?? null };
-        }
-        servers[code] = s.error
-          ? { error: s.error }
-          : { member_count: s.member_count ?? null, online_count: s.online_count ?? null };
-      }
-      return { timestamp: entry.timestamp, servers };
-    });
-    return { meta, history };
-  }
-
-  return { meta: raw.meta || {}, history: raw.history || [] };
+  const raw = await res.text();
+  return parseCsv(raw);
 }
 
-function niceName(code) {
-  return code.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+function collectServers() {
+  return new Map(SERVERS.map(s => [s.code, s.name]));
 }
 
-function resolveName(code, meta) {
-  return NAME_OVERRIDES[code] || meta[code]?.name || niceName(code);
-}
-
-function collectServers(meta, history) {
-  const map = new Map();
-  for (const code of Object.keys(meta)) {
-    map.set(code, resolveName(code, meta));
-  }
-  for (const entry of history) {
-    for (const code of Object.keys(entry.servers || {})) {
-      if (!map.has(code)) map.set(code, resolveName(code, meta));
-    }
-  }
-  return map;
-}
-
-// Ein ISO-Zeitstempel, dargestellt in der Zielzeitzone.
-function berlinDate(isoTimestamp) {
-  return luxon.DateTime.fromISO(isoTimestamp, { zone: 'utc' }).setZone(TARGET_TIMEZONE);
+// Ein Unix-Zeitstempel (Millisekunden), dargestellt in der Zielzeitzone.
+function berlinDate(ms) {
+  return luxon.DateTime.fromMillis(ms).setZone(TARGET_TIMEZONE);
 }
 
 // Wählt pro Kalendertag (deutsche Zeit, 00:00-23:59:59) genau eine Abfrage
@@ -239,7 +266,7 @@ function pickDailySamples(history) {
   for (const entry of history) {
     const dayKey = berlinDate(entry.timestamp).toFormat('yyyy-MM-dd');
     const current = latestPerDay.get(dayKey);
-    if (!current || new Date(entry.timestamp) > new Date(current.timestamp)) {
+    if (!current || entry.timestamp > current.timestamp) {
       latestPerDay.set(dayKey, entry);
     }
   }
@@ -279,7 +306,7 @@ function deltaMarkup(delta) {
 function onlineStats7d(history, code) {
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const values = history
-    .filter(e => new Date(e.timestamp).getTime() >= cutoff)
+    .filter(e => e.timestamp >= cutoff)
     .map(e => e.servers?.[code]?.online_count)
     .filter(v => typeof v === 'number');
   if (!values.length) return null;
@@ -319,6 +346,28 @@ function renderStats(dailyHistory, history, servers) {
   el.innerHTML = html;
 }
 
+// Schneidet am Anfang und am Ende der Reihe alle Punkte weg, an denen KEIN
+// Server einen Wert hat - sonst würde dort trotzdem ein Datum auf der
+// x-Achse reserviert, ohne dass ein Punkt sichtbar ist. Das betrifft vor
+// allem "Change": der allererste Tag hat serverübergreifend immer keinen
+// Change-Wert, da ein Vorwert zum Vergleich fehlt. Lücken MITTEN in der
+// Reihe bleiben unangetastet - die zeigt "spanGaps" bereits korrekt an.
+function trimEdgeGaps(dataMap) {
+  const codes = Object.keys(dataMap);
+  if (!codes.length) return dataMap;
+  const len = dataMap[codes[0]].length;
+  const hasAnyValue = i => codes.some(code => typeof dataMap[code][i]?.y === 'number');
+
+  let start = 0;
+  while (start < len && !hasAnyValue(start)) start++;
+  let end = len - 1;
+  while (end >= start && !hasAnyValue(end)) end--;
+
+  const trimmed = {};
+  for (const code of codes) trimmed[code] = dataMap[code].slice(start, end + 1);
+  return trimmed;
+}
+
 // {x,y}-Punkte für Total/Change, gebaut aus der täglichen Stichprobe. x ist
 // immer der Tagesbeginn (00:00 Uhr deutscher Zeit) - dadurch liegt jeder Tag
 // exakt auf seiner Linie, unabhängig davon, um wieviel Uhr die zugrunde
@@ -339,7 +388,7 @@ function buildDailySeries(dailyHistory, servers) {
       return { x: d.dayStart, y: v, actualTimestamp: d.timestamp };
     });
   }
-  return { totalData, changeData };
+  return { totalData: trimEdgeGaps(totalData), changeData: trimEdgeGaps(changeData) };
 }
 
 // {x,y}-Punkte für den Online-Modus, aus ALLEN rohen Abfragen - hier soll
@@ -350,11 +399,11 @@ function buildOnlineSeries(history, servers) {
   const onlineData = {};
   for (const [code] of servers.entries()) {
     onlineData[code] = history.map(e => ({
-      x: new Date(e.timestamp).getTime(),
+      x: e.timestamp,
       y: e.servers?.[code]?.online_count ?? null
     }));
   }
-  return { onlineData };
+  return { onlineData: trimEdgeGaps(onlineData) };
 }
 
 function makeDatasets(servers, dataMap) {
@@ -450,14 +499,14 @@ document.getElementById('reset-zoom').addEventListener('click', () => {
 });
 
 loadHistory()
-  .then(({ meta, history }) => {
+  .then(history => {
     if (!history.length) {
       document.querySelector('.wrap').innerHTML =
         '<p class="empty">No data yet — the first snapshot lands after the next scheduled run.</p>';
       return;
     }
 
-    const servers = collectServers(meta, history);
+    const servers = collectServers();
     const dailyHistory = pickDailySamples(history);
 
     const daily = buildDailySeries(dailyHistory, servers);
@@ -487,8 +536,6 @@ loadHistory()
   .catch(err => {
     document.querySelector('.wrap').innerHTML =
       `<p class="error">Could not load data: ${err.message}<br>
-      If opened directly (file://), the browser likely blocks local requests —
-      serve via a local web server or GitHub Pages instead.</p>`;
   });
 </script>
 
