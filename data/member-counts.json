@@ -347,6 +347,19 @@
           "online_count": 55
         }
       }
+    },
+    {
+      "timestamp": "2026-08-01T07:13:31.359Z",
+      "servers": {
+        "uuBEVU9anf": {
+          "member_count": 1286,
+          "online_count": 48
+        },
+        "jfHRUSYzp8": {
+          "member_count": 769,
+          "online_count": 61
+        }
+      }
     }
   ]
 }
