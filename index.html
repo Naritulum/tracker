@@ -158,13 +158,11 @@
 <script>
 const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
 
-// Zeitzone & Zieluhrzeit für die tägliche Stichprobe bei "Total"/"Change":
-// 22:00 Uhr deutscher Zeit. Läuft über die Intl-API und berücksichtigt damit
-// automatisch die Umstellung zwischen Sommer- und Winterzeit - kein
-// manuelles Nachjustieren von UTC-Offsets nötig.
+// Zeitzone, die einen "Kalendertag" für die tägliche Stichprobe bei
+// "Total"/"Change" definiert (00:00-23:59:59 deutscher Zeit). Läuft über
+// Luxon und berücksichtigt damit automatisch die Umstellung zwischen
+// Sommer- und Winterzeit.
 const TARGET_TIMEZONE = 'Europe/Berlin';
-const TARGET_HOUR_LOCAL = 22;
-const TARGET_MINUTE_LOCAL = 0;
 
 // Optional: Anzeigenamen manuell überschreiben (hat Vorrang vor dem von
 // Discord gelieferten Namen).
@@ -221,46 +219,37 @@ function collectServers(meta, history) {
   return map;
 }
 
-// YYYY-MM-DD in der Zielzeitzone - Gruppierungsschlüssel für "ein Tag".
-function localDateKey(date, timeZone) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(date);
+// Ein ISO-Zeitstempel, dargestellt in der Zielzeitzone.
+function berlinDate(isoTimestamp) {
+  return luxon.DateTime.fromISO(isoTimestamp, { zone: 'utc' }).setZone(TARGET_TIMEZONE);
 }
 
-// Minuten seit Mitternacht in der Zielzeitzone.
-function localMinutesOfDay(date, timeZone) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone, hour: '2-digit', minute: '2-digit', hour12: false
-  }).formatToParts(date);
-  const hour = Number(parts.find(p => p.type === 'hour').value) % 24;
-  const minute = Number(parts.find(p => p.type === 'minute').value);
-  return hour * 60 + minute;
-}
-
-// Wählt pro Kalendertag (deutsche Zeit) genau eine Abfrage aus: die, deren
-// Uhrzeit 22:00 Uhr am nächsten liegt. So ergibt sich aus den
-// unregelmäßigen Cron-Läufen trotzdem eine konsistente
-// "einmal täglich zur selben Zeit"-Reihe für Total/Change.
+// Wählt pro Kalendertag (deutsche Zeit, 00:00-23:59:59) genau eine Abfrage
+// aus: die späteste des Tages. "dayStart" (00:00 Uhr deutscher Zeit dieses
+// Tages) ist die Position im Graphen - die tatsächliche Uhrzeit der Abfrage
+// beeinflusst den Abstand zwischen den Tagen also NICHT, jeder Tag bekommt
+// exakt einen gleich weit entfernten Platz auf der Achse. Die echte Uhrzeit
+// bleibt trotzdem an "timestamp" erhalten und taucht im Tooltip auf.
 // Hinweis: Es wird EIN Eintrag pro Tag für beide Server gemeinsam gewählt
 // (nicht pro Server einzeln optimiert) - schlägt die Abfrage für einen
-// Server an genau diesem Zeitpunkt fehl, entsteht für diesen Tag eine
-// Lücke, auch wenn zu einem anderen Zeitpunkt desselben Tages Daten für
-// diesen Server vorlägen.
+// Server beim letzten Lauf des Tages fehl, gilt das auch für diesen Server,
+// selbst wenn er bei einem früheren Lauf desselben Tages Daten geliefert hätte.
 function pickDailySamples(history) {
-  const targetMinutes = TARGET_HOUR_LOCAL * 60 + TARGET_MINUTE_LOCAL;
-  const byDay = new Map();
+  const latestPerDay = new Map();
   for (const entry of history) {
-    const date = new Date(entry.timestamp);
-    const dayKey = localDateKey(date, TARGET_TIMEZONE);
-    const diff = Math.abs(localMinutesOfDay(date, TARGET_TIMEZONE) - targetMinutes);
-
-    const current = byDay.get(dayKey);
-    if (!current || diff < current.diff) {
-      byDay.set(dayKey, { entry, diff });
+    const dayKey = berlinDate(entry.timestamp).toFormat('yyyy-MM-dd');
+    const current = latestPerDay.get(dayKey);
+    if (!current || new Date(entry.timestamp) > new Date(current.timestamp)) {
+      latestPerDay.set(dayKey, entry);
     }
   }
-  return [...byDay.values()]
-    .map(v => v.entry)
-    .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  return [...latestPerDay.entries()]
+    .map(([dayKey, entry]) => ({
+      dayStart: luxon.DateTime.fromFormat(dayKey, 'yyyy-MM-dd', { zone: TARGET_TIMEZONE }).toMillis(),
+      timestamp: entry.timestamp,
+      servers: entry.servers
+    }))
+    .sort((a, b) => a.dayStart - b.dayStart);
 }
 
 // 7-Tage-Vergleich auf Basis der täglichen Stichprobe (nicht der rohen,
@@ -300,11 +289,14 @@ function onlineStats7d(history, code) {
 
 function renderStats(dailyHistory, history, servers) {
   const el = document.getElementById('stats');
-  const latestDaily = dailyHistory[dailyHistory.length - 1];
+  // Bewusst unabhängig von der täglichen Stichprobe des Graphen: hier soll
+  // immer der aktuellste bekannte Wert stehen, egal wie der Graph seine
+  // Tagespunkte auswählt.
+  const latestRaw = history[history.length - 1];
   let html = '';
   let i = 0;
   for (const [code, label] of servers.entries()) {
-    const count = latestDaily?.servers?.[code]?.member_count;
+    const count = latestRaw?.servers?.[code]?.member_count;
     const delta = deltaMarkup(getDelta(dailyHistory, code));
     const online = onlineStats7d(history, code);
     const onlineLine = online
@@ -327,21 +319,24 @@ function renderStats(dailyHistory, history, servers) {
   el.innerHTML = html;
 }
 
-// {x,y}-Punkte für Total/Change, gebaut aus der täglichen Stichprobe.
+// {x,y}-Punkte für Total/Change, gebaut aus der täglichen Stichprobe. x ist
+// immer der Tagesbeginn (00:00 Uhr deutscher Zeit) - dadurch liegt jeder Tag
+// exakt auf seiner Linie, unabhängig davon, um wieviel Uhr die zugrunde
+// liegende Abfrage tatsächlich lief. "actualTimestamp" trägt die echte
+// Abfragezeit mit, damit der Tooltip sie anzeigen kann.
 function buildDailySeries(dailyHistory, servers) {
   const totalData = {};
   const changeData = {};
   for (const [code] of servers.entries()) {
-    const points = dailyHistory.map(e => ({
-      t: new Date(e.timestamp).getTime(),
-      v: e.servers?.[code]?.member_count ?? null
+    const counts = dailyHistory.map(d => d.servers?.[code]?.member_count ?? null);
+    totalData[code] = dailyHistory.map((d, i) => ({
+      x: d.dayStart, y: counts[i], actualTimestamp: d.timestamp
     }));
-    totalData[code] = points.map(p => ({ x: p.t, y: p.v }));
-    changeData[code] = points.map((p, i) => {
-      if (i === 0) return { x: p.t, y: null };
-      const prev = points[i - 1].v;
-      const v = (typeof p.v === 'number' && typeof prev === 'number') ? p.v - prev : null;
-      return { x: p.t, y: v };
+    changeData[code] = dailyHistory.map((d, i) => {
+      const v = (i > 0 && typeof counts[i] === 'number' && typeof counts[i - 1] === 'number')
+        ? counts[i] - counts[i - 1]
+        : null;
+      return { x: d.dayStart, y: v, actualTimestamp: d.timestamp };
     });
   }
   return { totalData, changeData };
@@ -376,21 +371,21 @@ function makeDatasets(servers, dataMap) {
   }));
 }
 
-// Zeitachsen-Konfiguration je Modus. "Total"/"Change" zeigen einen Punkt
-// pro Tag, "Online" stündliche Rasterlinien alle 3 Stunden (0/3/6/.../21
-// Uhr) - der Abstand zwischen den Ereignissen entspricht dabei immer der
-// tatsächlich vergangenen Zeit statt gleich großer Kästchen pro Ereignis.
+// Zeitachsen-Konfiguration je Modus. "Total"/"Change" zeigen genau einen
+// Punkt pro Tag, fest auf 00:00 Uhr positioniert (siehe pickDailySamples) -
+// jeder Tag bekommt also denselben Abstand zum nächsten, unabhängig von der
+// tatsächlichen Abfragezeit. "Online" zeigt Rasterlinien alle 3 Stunden
+// (0/3/6/.../21 Uhr), hier entspricht der Punktabstand der tatsächlich
+// vergangenen Zeit.
 const TIME_CONFIG = {
   daily: {
     unit: 'day',
-    displayFormats: { day: 'MMM d' },
-    tooltipFormat: 'MMM d, yyyy'
+    displayFormats: { day: 'MMM d' }
   },
   online: {
     unit: 'hour',
     stepSize: 3,
-    displayFormats: { hour: 'MMM d, HH:mm' },
-    tooltipFormat: 'MMM d, yyyy HH:mm'
+    displayFormats: { hour: 'MMM d, HH:mm' }
   }
 };
 
@@ -410,7 +405,27 @@ function renderChart(datasets, timeConfig) {
           position: 'top',
           labels: { font: { family: 'Jost', size: 12 }, boxWidth: 14, usePointStyle: true, pointStyle: 'line' }
         },
-        tooltip: { titleFont: { family: 'Jost' }, bodyFont: { family: 'Jost' } },
+        tooltip: {
+          titleFont: { family: 'Jost' },
+          bodyFont: { family: 'Jost' },
+          callbacks: {
+            // Bei Total/Change codiert die x-Position nur noch den Tag, nicht
+            // die Uhrzeit - darum zusätzlich anzeigen, von welcher Abfrage
+            // (actualTimestamp) der verwendete Wert stammt. Beim Online-Modus
+            // ist die x-Position bereits die echte Abfragezeit, da reicht das
+            // normale Datum/Uhrzeit-Format.
+            title(items) {
+              if (!items.length) return '';
+              const point = items[0].raw;
+              if (point?.actualTimestamp) {
+                const day = luxon.DateTime.fromMillis(items[0].parsed.x).setZone(TARGET_TIMEZONE).toFormat('MMM d, yyyy');
+                const time = berlinDate(point.actualTimestamp).toFormat('HH:mm');
+                return `${day}, ${time}`;
+              }
+              return luxon.DateTime.fromMillis(items[0].parsed.x).setZone(TARGET_TIMEZONE).toFormat('MMM d, yyyy, HH:mm');
+            }
+          }
+        },
         zoom: {
           zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
           pan: { enabled: true, mode: 'x' },
