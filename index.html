@@ -204,7 +204,7 @@ function parseCsv(raw) {
   const history = [];
 
   for (const line of raw.split('\n')) {
-    if (!line || line.startsWith('#')) continue;
+    if (!line) continue;
     const fields = line.split(',');
 
     if (fields[0] !== '') {
