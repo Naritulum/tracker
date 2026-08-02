@@ -484,6 +484,13 @@ function renderChart(datasets, timeConfig) {
       scales: {
         x: {
           type: 'time',
+          // Ohne dies bestimmt der luxon-Adapter die Position der
+          // Achsen-Gitterlinien anhand der Systemzeitzone des jeweiligen
+          // Geräts statt anhand von TARGET_TIMEZONE. Die Datenpunkte selbst
+          // liegen aber fest auf Europe/Berlin (siehe dayStart) - stimmt die
+          // Gerätezeitzone nicht zufällig mit Berlin überein, verschieben
+          // sich Punkte und Gitterlinien systematisch gegeneinander.
+          adapters: { date: { zone: TARGET_TIMEZONE } },
           time: timeConfig,
           grid: { color: '#efefe9' },
           ticks: { font: { family: 'Jost', size: 11 } }
