@@ -31,6 +31,9 @@
     --red: #a13d3d;
   }
   * { box-sizing: border-box; }
+  /* Damit das HTML-Attribut "hidden" auch bei Elementen mit eigenem
+     display-Wert (z.B. flex) zuverlässig versteckt. */
+  [hidden] { display: none !important; }
   body {
     margin: 0;
     background: var(--bg);
@@ -86,7 +89,7 @@
     border-radius: 5px;
     overflow: hidden;
   }
-  .mode-btn {
+  .mode-btn, .range-btn {
     font-family: 'Jost', sans-serif;
     font-size: 0.78rem;
     padding: 0.32rem 0.8rem;
@@ -95,8 +98,18 @@
     color: var(--muted);
     cursor: pointer;
   }
-  .mode-btn.active { background: var(--navy); color: #fff; }
-  .mode-btn:not(.active):hover { color: var(--navy); }
+  .mode-btn.active, .range-btn.active { background: var(--navy); color: #fff; }
+  .mode-btn:not(.active):hover, .range-btn:not(.active):hover { color: var(--navy); }
+
+  /* Zeitraum-Auswahl für die Veränderungsanzeige in den Stats */
+  .range-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.7rem;
+    margin-bottom: 1rem;
+  }
+  .range-label { font-size: 0.74rem; color: var(--muted); }
 
   #reset-zoom {
     display: inline-flex;
@@ -136,6 +149,13 @@
 <div class="wrap">
   <h1>Server Tracker</h1>
 
+  <!-- Zeitraum für die Veränderungsanzeige (▲/▼) in den Stats. Die Buttons
+       werden per JS erzeugt und nur angezeigt, wenn genug Tage vorliegen. -->
+  <div class="range-bar" id="range-bar" hidden>
+    <span class="range-label">Change over</span>
+    <div class="toggle" id="range-toggle"></div>
+  </div>
+
   <div class="stats-row" id="stats"></div>
 
   <div class="card">
@@ -143,7 +163,9 @@
       <div class="toggle" id="mode-toggle">
         <button type="button" class="mode-btn active" data-mode="total">Total</button>
         <button type="button" class="mode-btn" data-mode="change">Change</button>
-        <button type="button" class="mode-btn" data-mode="online">Online</button>
+        <!-- "Online"-Modus ist vorübergehend abgeschaltet (hidden). Zum
+             Reaktivieren in der Script-Sektion ONLINE_MODE_ENABLED = true setzen. -->
+        <button type="button" class="mode-btn" data-mode="online" hidden>Online</button>
       </div>
       <button id="reset-zoom" type="button" title="Scroll to zoom, drag to pan · reset zoom">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
@@ -157,6 +179,26 @@
 
 <script>
 const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
+
+// Schalter für den Graph-Modus "Online" (3. Kategorie neben Total/Change).
+// false = vorübergehend abgeschaltet: Button versteckt, Datenreihe wird nicht
+// aufgebaut, der Modus ist nicht erreichbar. Der gesamte Code bleibt erhalten
+// - zum Reaktivieren einfach auf true setzen. Die Online-Stats über dem
+// Graphen (ø/min/max, 7d) sind davon unabhängig und bleiben immer aktiv.
+const ONLINE_MODE_ENABLED = false;
+
+// Wählbare Zeiträume für die Veränderungsanzeige (▲/▼) in den Stats. "steps"
+// = Anzahl Tage (Tagespunkte) zurück, gegen die verglichen wird. Ein Zeitraum
+// erscheint erst, wenn so viele Tage an Daten vorliegen; zusätzlich gibt es
+// immer "All" (gesamte Zeit). Standardauswahl: DEFAULT_RANGE_KEY.
+const DELTA_RANGES = [
+  { key: '7d',  label: '7d',  steps: 7 },
+  { key: '1mo', label: '1mo', steps: 30 },
+  { key: '6mo', label: '6mo', steps: 182 },
+  { key: '1y',  label: '1y',  steps: 365 },
+  { key: '2y',  label: '2y',  steps: 730 }
+];
+const DEFAULT_RANGE_KEY = '7d';
 
 // Zeitzone, die einen "Kalendertag" für die tägliche Stichprobe bei
 // "Total"/"Change" definiert (00:00-23:59:59 deutscher Zeit). Läuft über
@@ -279,25 +321,50 @@ function pickDailySamples(history) {
     .sort((a, b) => a.dayStart - b.dayStart);
 }
 
-// 7-Tage-Vergleich auf Basis der täglichen Stichprobe (nicht der rohen,
-// unregelmäßigen Abfragen) - sonst vergleicht man je nach Abfragefrequenz
-// nur die letzten paar Stunden statt 7 Tage. Liegen noch keine 7 Tage an
-// Daten vor, wird schlicht noch kein Delta angezeigt (–).
-function getDelta(dailyHistory, code) {
+// Welche Zeiträume stehen zur Auswahl? Nur die, für die schon genug Tage an
+// Daten vorliegen (z.B. 2y erst ab 730 Tagesschritten), plus immer "All" mit
+// der Gesamtzahl der Tage - sobald mindestens 2 Tage vorhanden sind.
+function getAvailableRanges(dailyHistory) {
   const lastIdx = dailyHistory.length - 1;
-  const compareIdx = lastIdx - 7;
+  const ranges = DELTA_RANGES.filter(r => lastIdx >= r.steps);
+  if (lastIdx >= 1) {
+    ranges.push({ key: 'all', label: `All · ${dailyHistory.length}d`, steps: lastIdx });
+  }
+  return ranges;
+}
+
+// Veränderung über den gewählten Zeitraum, auf Basis der täglichen
+// Stichprobe (nicht der rohen, unregelmäßigen Abfragen) - sonst vergleicht
+// man je nach Abfragefrequenz nur die letzten paar Stunden statt z.B. 7 Tage.
+// Gibt {value, label} zurück oder null (dann zeigt die Anzeige "–").
+// Bei "All" wird pro Server gegen seinen ERSTEN vorhandenen Wert verglichen
+// (Server können später dazugekommen sein); "label" nennt dann die Tage, die
+// dieser Server tatsächlich abdeckt.
+function getDelta(dailyHistory, code, range) {
+  const lastIdx = dailyHistory.length - 1;
+  const latest = dailyHistory[lastIdx]?.servers?.[code]?.member_count;
+  if (typeof latest !== 'number') return null;
+
+  if (range.key === 'all') {
+    const firstIdx = dailyHistory.findIndex(d => typeof d.servers?.[code]?.member_count === 'number');
+    if (firstIdx < 0 || firstIdx >= lastIdx) return null;
+    const first = dailyHistory[firstIdx].servers[code].member_count;
+    return { value: latest - first, label: `${lastIdx - firstIdx + 1}d` };
+  }
+
+  const compareIdx = lastIdx - range.steps;
   if (compareIdx < 0) return null;
-  const latest = dailyHistory[lastIdx].servers?.[code]?.member_count;
   const compare = dailyHistory[compareIdx].servers?.[code]?.member_count;
-  if (typeof latest !== 'number' || typeof compare !== 'number') return null;
-  return latest - compare;
+  if (typeof compare !== 'number') return null;
+  return { value: latest - compare, label: range.label };
 }
 
 function deltaMarkup(delta) {
-  if (delta === null) return { text: '–', cls: '' };
-  if (delta > 0) return { text: `▲ ${delta.toLocaleString('en-US')} · 7d`, cls: 'up' };
-  if (delta < 0) return { text: `▼ ${Math.abs(delta).toLocaleString('en-US')} · 7d`, cls: 'down' };
-  return { text: 'No change · 7d', cls: '' };
+  if (!delta) return { text: '–', cls: '' };
+  const { value, label } = delta;
+  if (value > 0) return { text: `▲ ${value.toLocaleString('en-US')} · ${label}`, cls: 'up' };
+  if (value < 0) return { text: `▼ ${Math.abs(value).toLocaleString('en-US')} · ${label}`, cls: 'down' };
+  return { text: `No change · ${label}`, cls: '' };
 }
 
 // Durchschnitt/Min/Max der Online-Zahl über die letzten 7 Tage, basierend
@@ -314,7 +381,7 @@ function onlineStats7d(history, code) {
   return { avg, min: Math.min(...values), max: Math.max(...values) };
 }
 
-function renderStats(dailyHistory, history, servers) {
+function renderStats(dailyHistory, history, servers, range) {
   const el = document.getElementById('stats');
   // Bewusst unabhängig von der täglichen Stichprobe des Graphen: hier soll
   // immer der aktuellste bekannte Wert stehen, egal wie der Graph seine
@@ -324,7 +391,7 @@ function renderStats(dailyHistory, history, servers) {
   let i = 0;
   for (const [code, label] of servers.entries()) {
     const count = latestRaw?.servers?.[code]?.member_count;
-    const delta = deltaMarkup(getDelta(dailyHistory, code));
+    const delta = deltaMarkup(range ? getDelta(dailyHistory, code, range) : null);
     const online = onlineStats7d(history, code);
     const onlineLine = online
       ? `Online members: ø ${online.avg.toLocaleString('en-US')} · min ${online.min.toLocaleString('en-US')} · max ${online.max.toLocaleString('en-US')} (7d)`
@@ -344,6 +411,29 @@ function renderStats(dailyHistory, history, servers) {
     i++;
   }
   el.innerHTML = html;
+}
+
+// Baut die Zeitraum-Buttons über den Stats. Gibt es nur eine einzige Option
+// (z.B. erst wenige Tage an Daten), ist eine Auswahl sinnlos - dann bleibt
+// die Leiste versteckt.
+function renderRangeToggle(ranges, active, onSelect) {
+  const bar = document.getElementById('range-bar');
+  const toggle = document.getElementById('range-toggle');
+  toggle.innerHTML = '';
+  bar.hidden = ranges.length < 2;
+  if (bar.hidden) return;
+
+  for (const range of ranges) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'range-btn' + (range.key === active?.key ? ' active' : '');
+    btn.textContent = range.label;
+    btn.addEventListener('click', () => {
+      toggle.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
+      onSelect(range);
+    });
+    toggle.appendChild(btn);
+  }
 }
 
 // Schneidet am Anfang und am Ende der Reihe alle Punkte weg, an denen KEIN
@@ -505,6 +595,10 @@ document.getElementById('reset-zoom').addEventListener('click', () => {
   if (chartInstance) chartInstance.resetZoom();
 });
 
+if (ONLINE_MODE_ENABLED) {
+  document.querySelector('.mode-btn[data-mode="online"]').hidden = false;
+}
+
 loadHistory()
   .then(history => {
     if (!history.length) {
@@ -517,13 +611,23 @@ loadHistory()
     const dailyHistory = pickDailySamples(history);
 
     const daily = buildDailySeries(dailyHistory, servers);
-    const online = buildOnlineSeries(history, servers);
+    // Online-Reihe nur aufbauen, wenn der Modus aktiv ist (siehe ONLINE_MODE_ENABLED).
+    const online = ONLINE_MODE_ENABLED ? buildOnlineSeries(history, servers) : null;
 
-    renderStats(dailyHistory, history, servers);
+    // Standard: 7d. Ist das mangels Daten noch nicht möglich, gilt "All".
+    const ranges = getAvailableRanges(dailyHistory);
+    let activeRange = ranges.find(r => r.key === DEFAULT_RANGE_KEY) || ranges[ranges.length - 1] || null;
+    renderRangeToggle(ranges, activeRange, selected => {
+      activeRange = selected;
+      renderStats(dailyHistory, history, servers, activeRange);
+    });
+
+    renderStats(dailyHistory, history, servers, activeRange);
     renderChart(makeDatasets(servers, daily.totalData), TIME_CONFIG.daily);
 
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (btn.dataset.mode === 'online' && !ONLINE_MODE_ENABLED) return;
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const mode = btn.dataset.mode;
