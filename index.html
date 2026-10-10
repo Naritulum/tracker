@@ -101,15 +101,11 @@
   .mode-btn.active, .range-btn.active { background: var(--navy); color: #fff; }
   .mode-btn:not(.active):hover, .range-btn:not(.active):hover { color: var(--navy); }
 
-  /* Zeitraum-Auswahl für die Veränderungsanzeige in den Stats */
-  .range-bar {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.7rem;
-    margin-bottom: 1rem;
-  }
-  .range-label { font-size: 0.74rem; color: var(--muted); }
+  /* Zeitraum-Auswahl für die Stats: steht in der Stats-Row an der Stelle
+     einer weiteren Stat (rechts neben den Servern). "#stats" selbst erzeugt
+     keine eigene Box, damit seine Einträge direkt in der Row liegen. */
+  #stats { display: contents; }
+  .range-bar { align-self: flex-start; }
 
   #reset-zoom {
     display: inline-flex;
@@ -149,14 +145,15 @@
 <div class="wrap">
   <h1>Server Tracker</h1>
 
-  <!-- Zeitraum für die Veränderungsanzeige (▲/▼) in den Stats. Die Buttons
-       werden per JS erzeugt und nur angezeigt, wenn genug Tage vorliegen. -->
-  <div class="range-bar" id="range-bar" hidden>
-    <span class="range-label">Change over</span>
-    <div class="toggle" id="range-toggle"></div>
+  <div class="stats-row">
+    <div id="stats"></div>
+    <!-- Zeitraum für die Stats (Veränderung ▲/▼ und Online-Zahlen). Die
+         Buttons werden per JS erzeugt und nur angezeigt, wenn genug Tage
+         vorliegen. -->
+    <div class="range-bar" id="range-bar" hidden>
+      <div class="toggle" id="range-toggle"></div>
+    </div>
   </div>
-
-  <div class="stats-row" id="stats"></div>
 
   <div class="card">
     <div class="card-head">
@@ -322,13 +319,14 @@ function pickDailySamples(history) {
 }
 
 // Welche Zeiträume stehen zur Auswahl? Nur die, für die schon genug Tage an
-// Daten vorliegen (z.B. 2y erst ab 730 Tagesschritten), plus immer "All" mit
-// der Gesamtzahl der Tage - sobald mindestens 2 Tage vorhanden sind.
+// Daten vorliegen (z.B. 2y erst ab 730 Tagesschritten), plus immer "All" -
+// sobald mindestens 2 Tage vorhanden sind. "All" nennt die tatsächlich
+// verglichene Differenz: Anzahl Datenpunkte minus 1 (42 Punkte = 41d).
 function getAvailableRanges(dailyHistory) {
   const lastIdx = dailyHistory.length - 1;
   const ranges = DELTA_RANGES.filter(r => lastIdx >= r.steps);
   if (lastIdx >= 1) {
-    ranges.push({ key: 'all', label: `All · ${dailyHistory.length}d`, steps: lastIdx });
+    ranges.push({ key: 'all', label: `All · ${lastIdx}d`, steps: lastIdx });
   }
   return ranges;
 }
@@ -338,8 +336,8 @@ function getAvailableRanges(dailyHistory) {
 // man je nach Abfragefrequenz nur die letzten paar Stunden statt z.B. 7 Tage.
 // Gibt {value, label} zurück oder null (dann zeigt die Anzeige "–").
 // Bei "All" wird pro Server gegen seinen ERSTEN vorhandenen Wert verglichen
-// (Server können später dazugekommen sein); "label" nennt dann die Tage, die
-// dieser Server tatsächlich abdeckt.
+// (Server können später dazugekommen sein); "label" nennt dann die
+// tatsächlich verglichene Differenz in Tagen für diesen Server.
 function getDelta(dailyHistory, code, range) {
   const lastIdx = dailyHistory.length - 1;
   const latest = dailyHistory[lastIdx]?.servers?.[code]?.member_count;
@@ -349,7 +347,7 @@ function getDelta(dailyHistory, code, range) {
     const firstIdx = dailyHistory.findIndex(d => typeof d.servers?.[code]?.member_count === 'number');
     if (firstIdx < 0 || firstIdx >= lastIdx) return null;
     const first = dailyHistory[firstIdx].servers[code].member_count;
-    return { value: latest - first, label: `${lastIdx - firstIdx + 1}d` };
+    return { value: latest - first, label: `${lastIdx - firstIdx}d` };
   }
 
   const compareIdx = lastIdx - range.steps;
@@ -367,11 +365,12 @@ function deltaMarkup(delta) {
   return { text: `No change · ${label}`, cls: '' };
 }
 
-// Durchschnitt/Min/Max der Online-Zahl über die letzten 7 Tage, basierend
-// auf ALLEN rohen Abfragen (nicht nur der täglichen Stichprobe) - dadurch
-// ist der Durchschnitt aussagekräftiger als mit nur 7 Einzelwerten.
-function onlineStats7d(history, code) {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+// Durchschnitt/Min/Max der Online-Zahl über den gewählten Zeitraum,
+// basierend auf ALLEN rohen Abfragen (nicht nur der täglichen Stichprobe) -
+// dadurch ist der Durchschnitt aussagekräftiger als mit nur einem Wert pro
+// Tag. Bei "All" fließen alle vorhandenen Abfragen ein.
+function onlineStats(history, code, range) {
+  const cutoff = range.key === 'all' ? -Infinity : Date.now() - range.steps * 24 * 60 * 60 * 1000;
   const values = history
     .filter(e => e.timestamp >= cutoff)
     .map(e => e.servers?.[code]?.online_count)
@@ -391,10 +390,14 @@ function renderStats(dailyHistory, history, servers, range) {
   let i = 0;
   for (const [code, label] of servers.entries()) {
     const count = latestRaw?.servers?.[code]?.member_count;
-    const delta = deltaMarkup(range ? getDelta(dailyHistory, code, range) : null);
-    const online = onlineStats7d(history, code);
+    const rawDelta = range ? getDelta(dailyHistory, code, range) : null;
+    const delta = deltaMarkup(rawDelta);
+    // Ohne wählbaren Zeitraum (noch zu wenige Tage) gilt für die Online-Zahlen 7d.
+    const onlineRange = range || DELTA_RANGES.find(r => r.key === DEFAULT_RANGE_KEY);
+    const online = onlineStats(history, code, onlineRange);
+    const onlineLabel = rawDelta ? rawDelta.label : (onlineRange.key === 'all' ? 'all' : onlineRange.label);
     const onlineLine = online
-      ? `Online members: ø ${online.avg.toLocaleString('en-US')} · min ${online.min.toLocaleString('en-US')} · max ${online.max.toLocaleString('en-US')} (7d)`
+      ? `Online members: ø ${online.avg.toLocaleString('en-US')} · min ${online.min.toLocaleString('en-US')} · max ${online.max.toLocaleString('en-US')} (${onlineLabel})`
       : '';
     html += `<div class="stat-item">
       <span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
