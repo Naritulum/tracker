@@ -101,7 +101,7 @@
   .mode-btn.active, .range-btn.active { background: var(--navy); color: #fff; }
   .mode-btn:not(.active):hover, .range-btn:not(.active):hover { color: var(--navy); }
 
-  /* Zeitraum-Auswahl für die Stats: steht in der Stats-Row an der Stelle
+  /* Zeitraum-Auswahl für Stats und Graph: steht in der Stats-Row an der Stelle
      einer weiteren Stat (rechts neben den Servern). "#stats" selbst erzeugt
      keine eigene Box, damit seine Einträge direkt in der Row liegen. */
   #stats { display: contents; }
@@ -147,8 +147,9 @@
 
   <div class="stats-row">
     <div id="stats"></div>
-    <!-- Zeitraum für die Stats (Veränderung ▲/▼ und Online-Zahlen). Die
-         Buttons werden per JS erzeugt und nur angezeigt, wenn genug Tage
+    <!-- Zeitraum für die Stats (Veränderung ▲/▼ und Online-Zahlen) UND für den
+         Graphen (zeigt nur die Datenpunkte dieses Zeitraums, bei "All" alle).
+         Die Buttons werden per JS erzeugt und nur angezeigt, wenn genug Tage
          vorliegen. -->
     <div class="range-bar" id="range-bar" hidden>
       <div class="toggle" id="range-toggle"></div>
@@ -184,10 +185,12 @@ const COLORS = ['#1c3a54', '#b8863a', '#4c6b5e', '#8a5a6b'];
 // Graphen (ø/min/max, 7d) sind davon unabhängig und bleiben immer aktiv.
 const ONLINE_MODE_ENABLED = true;
 
-// Wählbare Zeiträume für die Veränderungsanzeige (▲/▼) in den Stats. "steps"
+// Wählbare Zeiträume. Sie steuern die Veränderungsanzeige (▲/▼) und die
+// Online-Zahlen in den Stats UND welche Datenpunkte der Graph zeigt. "steps"
 // = Anzahl Tage (Tagespunkte) zurück, gegen die verglichen wird. Ein Zeitraum
 // erscheint erst, wenn so viele Tage an Daten vorliegen; zusätzlich gibt es
-// immer "All" (gesamte Zeit). Standardauswahl: DEFAULT_RANGE_KEY.
+// immer "All" (gesamte Zeit, alle Datenpunkte). Standardauswahl beim Laden:
+// DEFAULT_RANGE_KEY (7d).
 const DELTA_RANGES = [
   { key: '7d',  label: '7d',  steps: 7 },
   { key: '1mo', label: '1mo', steps: 30 },
@@ -266,6 +269,228 @@ function parseCsv(raw) {
         s.o = s.o === null ? d : s.o + d;
       }
       servers[SERVERS[i].code] = { member_count: s.m, online_count: s.o };
+    }
+
+    history.push({ timestamp: t0State.t * 1000, servers });
+  }
+
+  return history;
+}
+
+async function loadHistory() {
+  const res = await fetch('data/member-counts.csv', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  const raw = await res.text();
+  return parseCsv(raw);
+}
+
+function collectServers() {
+  return new Map(SERVERS.map(s => [s.code, s.name]));
+}
+
+// Ein Unix-Zeitstempel (Millisekunden), dargestellt in der Zielzeitzone.
+function berlinDate(ms) {
+  return luxon.DateTime.fromMillis(ms).setZone(TARGET_TIMEZONE);
+}
+
+// Wählt pro Kalendertag (deutsche Zeit, 00:00-23:59:59) genau eine Abfrage
+// aus: die späteste des Tages. "dayStart" (00:00 Uhr deutscher Zeit dieses
+// Tages) ist die Position im Graphen - die tatsächliche Uhrzeit der Abfrage
+// beeinflusst den Abstand zwischen den Tagen also NICHT, jeder Tag bekommt
+// exakt einen gleich weit entfernten Platz auf der Achse. Die echte Uhrzeit
+// bleibt trotzdem an "timestamp" erhalten und taucht im Tooltip auf.
+// Hinweis: Es wird EIN Eintrag pro Tag für beide Server gemeinsam gewählt
+// (nicht pro Server einzeln optimiert) - schlägt die Abfrage für einen
+// Server beim letzten Lauf des Tages fehl, gilt das auch für diesen Server,
+// selbst wenn er bei einem früheren Lauf desselben Tages Daten geliefert hätte.
+function pickDailySamples(history) {
+  const latestPerDay = new Map();
+  for (const entry of history) {
+    const dayKey = berlinDate(entry.timestamp).toFormat('yyyy-MM-dd');
+    const current = latestPerDay.get(dayKey);
+    if (!current || entry.timestamp > current.timestamp) {
+      latestPerDay.set(dayKey, entry);
+    }
+  }
+  return [...latestPerDay.entries()]
+    .map(([dayKey, entry]) => ({
+      dayStart: luxon.DateTime.fromFormat(dayKey, 'yyyy-MM-dd', { zone: TARGET_TIMEZONE }).toMillis(),
+      timestamp: entry.timestamp,
+      servers: entry.servers
+    }))
+    .sort((a, b) => a.dayStart - b.dayStart);
+}
+
+// Welche Zeiträume stehen zur Auswahl? Nur die, für die schon genug Tage an
+// Daten vorliegen (z.B. 2y erst ab 730 Tagesschritten), plus immer "All" -
+// sobald mindestens 2 Tage vorhanden sind. "All" nennt die tatsächlich
+// verglichene Differenz: Anzahl Datenpunkte minus 1 (42 Punkte = 41d).
+function getAvailableRanges(dailyHistory) {
+  const lastIdx = dailyHistory.length - 1;
+  const ranges = DELTA_RANGES.filter(r => lastIdx >= r.steps);
+  if (lastIdx >= 1) {
+    ranges.push({ key: 'all', label: `All · ${lastIdx}d`, steps: lastIdx });
+  }
+  return ranges;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Untere Grenze (inklusive) des gewählten Zeitraums für den Tages-Graphen
+// (Total/Change): Tagesbeginn des Vergleichstags, gegen den auch die ▲/▼-
+// Veränderung in den Stats rechnet. Bei 7d zeigt der Graph also den Wert von
+// vor 7 Tagen bis heute - der erste Punkt ist genau die Basis der Veränderung.
+// "All" bzw. kein Zeitraum: keine Grenze, alle Punkte.
+function dailyRangeStart(dailyHistory, range) {
+  if (!range || range.key === 'all') return -Infinity;
+  const compare = dailyHistory[dailyHistory.length - 1 - range.steps];
+  return compare ? compare.dayStart : -Infinity;
+}
+
+// Untere Grenze (inklusive) des gewählten Zeitraums für die rohen Abfragen:
+// jetzt minus N Tage. Gilt für den Online-Graphen und für die Online-Zahlen in
+// den Stats (beide nutzen dieselbe Grenze).
+function rawRangeStart(range) {
+  if (!range || range.key === 'all') return -Infinity;
+  return Date.now() - range.steps * DAY_MS;
+}
+
+// Behält je Server nur die Punkte ab minX. Alle Server werden mit derselben
+// Grenze gefiltert, die Reihen bleiben also gleich lang (Voraussetzung für
+// trimEdgeGaps). Ohne Grenze kommt die Reihe unverändert zurück.
+function filterSeries(dataMap, minX) {
+  if (minX === -Infinity) return dataMap;
+  const filtered = {};
+  for (const code of Object.keys(dataMap)) {
+    filtered[code] = dataMap[code].filter(p => p.x >= minX);
+  }
+  return trimEdgeGaps(filtered);
+}
+
+// Veränderung über den gewählten Zeitraum, auf Basis der täglichen
+// Stichprobe (nicht der rohen, unregelmäßigen Abfragen) - sonst vergleicht
+// man je nach Abfragefrequenz nur die letzten paar Stunden statt z.B. 7 Tage.
+// Gibt {value, label} zurück oder null (dann zeigt die Anzeige "–").
+// Bei "All" wird pro Server gegen seinen ERSTEN vorhandenen Wert verglichen
+// (Server können später dazugekommen sein); "label" nennt dann die
+// tatsächlich verglichene Differenz in Tagen für diesen Server.
+function getDelta(dailyHistory, code, range) {
+  const lastIdx = dailyHistory.length - 1;
+  const latest = dailyHistory[lastIdx]?.servers?.[code]?.member_count;
+  if (typeof latest !== 'number') return null;
+
+  if (range.key === 'all') {
+    const firstIdx = dailyHistory.findIndex(d => typeof d.servers?.[code]?.member_count === 'number');
+    if (firstIdx < 0 || firstIdx >= lastIdx) return null;
+    const first = dailyHistory[firstIdx].servers[code].member_count;
+    return { value: latest - first, label: `${lastIdx - firstIdx}d` };
+  }
+
+  const compareIdx = lastIdx - range.steps;
+  if (compareIdx < 0) return null;
+  const compare = dailyHistory[compareIdx].servers?.[code]?.member_count;
+  if (typeof compare !== 'number') return null;
+  return { value: latest - compare, label: range.label };
+}
+
+function deltaMarkup(delta) {
+  if (!delta) return { text: '–', cls: '' };
+  const { value, label } = delta;
+  if (value > 0) return { text: `▲ ${value.toLocaleString('en-US')} · ${label}`, cls: 'up' };
+  if (value < 0) return { text: `▼ ${Math.abs(value).toLocaleString('en-US')} · ${label}`, cls: 'down' };
+  return { text: `No change · ${label}`, cls: '' };
+}
+
+// Durchschnitt/Min/Max der Online-Zahl über den gewählten Zeitraum,
+// basierend auf ALLEN rohen Abfragen (nicht nur der täglichen Stichprobe) -
+// dadurch ist der Durchschnitt aussagekräftiger als mit nur einem Wert pro
+// Tag. Bei "All" fließen alle vorhandenen Abfragen ein.
+function onlineStats(history, code, range) {
+  const cutoff = rawRangeStart(range);
+  const values = history
+    .filter(e => e.timestamp >= cutoff)
+    .map(e => e.servers?.[code]?.online_count)
+    .filter(v => typeof v === 'number');
+  if (!values.length) return null;
+  const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  return { avg, min: Math.min(...values), max: Math.max(...values) };
+}
+
+function renderStats(dailyHistory, history, servers, range) {
+  const el = document.getElementById('stats');
+  // Bewusst unabhängig von der täglichen Stichprobe des Graphen: hier soll
+  // immer der aktuellste bekannte Wert stehen, egal wie der Graph seine
+  // Tagespunkte auswählt.
+  const latestRaw = history[history.length - 1];
+  let html = '';
+  let i = 0;
+  for (const [code, label] of servers.entries()) {
+    const count = latestRaw?.servers?.[code]?.member_count;
+    const rawDelta = range ? getDelta(dailyHistory, code, range) : null;
+    const delta = deltaMarkup(rawDelta);
+    // Ohne wählbaren Zeitraum (noch zu wenige Tage) gilt für die Online-Zahlen 7d.
+    const onlineRange = range || DELTA_RANGES.find(r => r.key === DEFAULT_RANGE_KEY);
+    const online = onlineStats(history, code, onlineRange);
+    const onlineLabel = rawDelta ? rawDelta.label : (onlineRange.key === 'all' ? 'all' : onlineRange.label);
+    const onlineLine = online
+      ? `Online members: ø ${online.avg.toLocaleString('en-US')} · min ${online.min.toLocaleString('en-US')} · max ${online.max.toLocaleString('en-US')} (${onlineLabel})`
+      : '';
+    html += `<div class="stat-item">
+      <span class="dot" style="background:${COLORS[i % COLORS.length]}"></span>
+      <div class="stat-main">
+        <div class="stat-line1">
+          <span class="stat-name">${label}</span>
+          <span class="stat-value">${typeof count === 'number' ? count.toLocaleString('en-US') : '–'}</span>
+          <span class="stat-unit">members</span>
+          <span class="stat-delta ${delta.cls}">${delta.text}</span>
+        </div>
+        ${onlineLine ? `<div class="stat-line2">${onlineLine}</div>` : ''}
+      </div>
+    </div>`;
+    i++;
+  }
+  el.innerHTML = html;
+}
+
+// Baut die Zeitraum-Buttons über den Stats. Gibt es nur eine einzige Option
+// (z.B. erst wenige Tage an Daten), ist eine Auswahl sinnlos - dann bleibt
+// die Leiste versteckt.
+function renderRangeToggle(ranges, active, onSelect) {
+  const bar = document.getElementById('range-bar');
+  const toggle = document.getElementById('range-toggle');
+  toggle.innerHTML = '';
+  bar.hidden = ranges.length < 2;
+  if (bar.hidden) return;
+
+  for (const range of ranges) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'range-btn' + (range.key === active?.key ? ' active' : '');
+    btn.textContent = range.label;
+    btn.addEventListener('click', () => {
+      toggle.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b === btn));
+      onSelect(range);
+    });
+    toggle.appendChild(btn);
+  }
+}
+
+// Schneidet am Anfang und am Ende der Reihe alle Punkte weg, an denen KEIN
+// Server einen Wert hat - sonst würde dort trotzdem ein Datum auf der
+// x-Achse reserviert, ohne dass ein Punkt sichtbar ist. Das betrifft vor
+// allem "Change": der allererste Tag hat serverübergreifend immer keinen
+// Change-Wert, da ein Vorwert zum Vergleich fehlt. Lücken MITTEN in der
+// Reihe bleiben unangetastet - die zeigt "spanGaps" bereits korrekt an.
+function trimEdgeGaps(dataMap) {
+  const codes = Object.keys(dataMap);
+  if (!codes.length) return dataMap;
+  const len = dataMap[codes[0]].length;
+  const hasAnyValue = i => codes.some(code => typeof dataMap[code][i]?.y === 'number');
+
+  let start = 0;
+  while (start < len && !hasAnyValue(start)) start++;
+  let end = len - 1;
+  while (end >= start &&S[i].code] = { member_count: s.m, online_count: s.o };
     }
 
     history.push({ timestamp: t0State.t * 1000, servers });
